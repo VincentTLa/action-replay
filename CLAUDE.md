@@ -40,3 +40,4 @@
 - Pause and ask before adding any new third-party dependency — every new artifact costs the user a trip to the other machine.
 - When in doubt about a Gradle/AGP/Kotlin version, leave the existing version alone unless it's blocking.
 - All "verify on device" steps land on the user, not on Claude.
+- **AGP 9.x bundles the Kotlin Android plugin.** Do NOT apply `org.jetbrains.kotlin.android` — it double-registers the `kotlin` extension and Gradle sync fails with "extension is already registered with that name". Only `kotlin-compose` (the Compose compiler plugin) is applied separately. The Kotlin *version* still lives in `libs.versions.toml` because `kotlin-compose` references it.
