@@ -332,7 +332,7 @@ private fun CircleButton(
             contentAlignment = Alignment.Center,
         ) {
             Canvas(modifier = Modifier.size(22.dp)) {
-                this.iconDraw(size.minDimension)
+                iconDraw(this, size.minDimension)
             }
         }
         Spacer(Modifier.height(6.dp))

@@ -36,6 +36,33 @@
 - Ring buffer holds 8s of headroom (over the 5s spec) so the rewind-5s extraction can always anchor on a prior keyframe.
 - Inline playback uses `VideoView` rather than Media3/ExoPlayer to avoid pulling in a large dep tree.
 
+## Code-generation workflow (mandatory)
+
+This project has three custom agents in `.claude/agents/`. Whenever you generate non-trivial code, run them in this sequence:
+
+1. **coder** (Sonnet) — implements the change.
+2. **reviewer** (Opus) — independent review, read-only.
+3. **tester** (Sonnet) — static defect hunt, no code written, no commands run.
+4. If reviewer or tester reports blocking/major findings → re-spawn **coder** with their report attached and loop. **Hard cap: 2 fix loops.** If still not clean, summarise the remaining issues and ask the user.
+
+### When the trio is mandatory
+- A new `.kt` file is created.
+- A new function is added.
+- A diff touches control flow, IO, threading, lifecycle, Camera2/MediaCodec/MediaMuxer/MediaStore, or Compose UI structure.
+- A Gradle/build-config change beyond a version bump.
+
+### When to skip the trio (do it yourself, directly)
+- Renames, typo fixes, single-line constant tweaks.
+- Comment-only edits.
+- Pure dependency version bumps in `libs.versions.toml`.
+- Reverting a recent change verbatim.
+
+### How to invoke
+Use the Agent tool with `subagent_type: "coder" | "reviewer" | "tester"`. Each prompt must be self-contained — agents start with no prior conversation context. Include: the goal, the specific files/diff to look at, and (for reviewer/tester) the coder's report from the previous step.
+
+### Don't bypass
+"Quick fix" is the easiest way to reintroduce the bugs already documented in this file (async-codec landmine, AGP-9 plugin/DSL gotchas, etc.). Run the trio.
+
 ## What Claude should remember
 - Pause and ask before adding any new third-party dependency — every new artifact costs the user a trip to the other machine.
 - When in doubt about a Gradle/AGP/Kotlin version, leave the existing version alone unless it's blocking.
