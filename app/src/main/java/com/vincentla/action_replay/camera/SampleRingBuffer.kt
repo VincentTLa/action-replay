@@ -66,6 +66,13 @@ class SampleRingBuffer(private val capacityUs: Long) {
      * Returns null if no eligible keyframe exists yet.
      */
     @Synchronized
+    fun clear() {
+        samples.clear()
+        newestVideoPts = Long.MIN_VALUE
+        oldestVideoPts = Long.MAX_VALUE
+    }
+
+    @Synchronized
     fun snapshotLast(rewindUs: Long): List<Sample>? {
         if (newestVideoPts == Long.MIN_VALUE) return null
         val target = newestVideoPts - rewindUs

@@ -77,7 +77,8 @@ class CameraEngine(
     private var videoEncoderSurface: Surface? = null
     private var audioEncoder: MediaCodec? = null
     private var audioRecord: AudioRecord? = null
-    private var audioReading = false
+    @Volatile private var audioReading = false
+    private var audioWorkerThread: Thread? = null
 
     private var videoFormat: MediaFormat? = null
     private var audioFormat: MediaFormat? = null
@@ -105,6 +106,7 @@ class CameraEngine(
             return
         }
         running = true
+        ringBuffer.clear()
         try {
             startThreads()
             setupVideoEncoder()
@@ -122,9 +124,10 @@ class CameraEngine(
 
     fun stop() {
         running = false
-        // Finalize a live session if active.
+        val sessionWasActive: Boolean
         synchronized(sessionLock) {
-            if (liveStarted || pendingSessionStart) {
+            sessionWasActive = liveStarted || pendingSessionStart
+            if (sessionWasActive) {
                 finalizeLiveMuxerLocked(publish = false)
             }
         }
@@ -132,6 +135,8 @@ class CameraEngine(
         try { session?.close() } catch (_: Throwable) {}
         try { cameraDevice?.close() } catch (_: Throwable) {}
         try { audioRecord?.stop() } catch (_: Throwable) {}
+        audioWorkerThread?.join(500)
+        audioWorkerThread = null
         try { audioRecord?.release() } catch (_: Throwable) {}
         try { videoEncoder?.stop() } catch (_: Throwable) {}
         try { videoEncoder?.release() } catch (_: Throwable) {}
@@ -143,6 +148,7 @@ class CameraEngine(
         audioEncoder = null; audioRecord = null; videoEncoderSurface = null
 
         stopThreads()
+        if (sessionWasActive) listener.onSessionSaved(null)
     }
 
     fun beginSession() {
@@ -307,7 +313,7 @@ class CameraEngine(
                     }
                 }
             }
-        }.also { it.name = "audio-worker" }.start()
+        }.also { it.name = "audio-worker"; audioWorkerThread = it }.start()
     }
 
     @SuppressLint("MissingPermission")

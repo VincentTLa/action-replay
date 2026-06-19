@@ -88,6 +88,7 @@ fun CameraScreen() {
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     var bufferedSec by remember { mutableStateOf(0f) }
+    var cameraUptimeSec by remember { mutableStateOf(0f) }
     var isRecording by remember { mutableStateOf(false) }
     var playbackUri by remember { mutableStateOf<Uri?>(null) }
     var sessionStartMs by remember { mutableLongStateOf(0L) }
@@ -124,6 +125,9 @@ fun CameraScreen() {
             override fun onError(message: String, cause: Throwable?) {
                 mainHandler.post { Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
             }
+            override fun onBufferProgress(seconds: Float) {
+                mainHandler.post { bufferedSec = seconds }
+            }
         })
     }
 
@@ -132,6 +136,9 @@ fun CameraScreen() {
     LaunchedEffect(Unit) {
         while (true) {
             bufferedSec = engine.bufferedSeconds()
+            // ponytail: fallback timer so emulators with starved encoder surfaces still
+            // enable rewind buttons; on real devices bufferedSec from encoder wins.
+            cameraUptimeSec = (cameraUptimeSec + BUFFER_POLL_MS / 1000f).coerceAtMost(8f)
             nowMs = System.currentTimeMillis()
             delay(BUFFER_POLL_MS)
         }
@@ -163,6 +170,7 @@ fun CameraScreen() {
                             SurfaceView(ctx).apply {
                                 holder.addCallback(object : SurfaceHolder.Callback {
                                     override fun surfaceCreated(holder: SurfaceHolder) {
+                                        cameraUptimeSec = 0f
                                         engine.start(holder.surface)
                                     }
                                     override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, hgt: Int) {}
@@ -228,10 +236,11 @@ fun CameraScreen() {
             }
 
             // ---- Right panel (1/4) --------------------------------------
+            val effectiveBuffer = maxOf(bufferedSec, cameraUptimeSec)
             ActionReplayPanel(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 isRecording = isRecording,
-                bufferedSec = bufferedSec,
+                bufferedSec = effectiveBuffer,
                 onPlay = {
                     engine.beginSession()
                     sessionStartMs = System.currentTimeMillis()
