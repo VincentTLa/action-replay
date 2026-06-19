@@ -171,40 +171,48 @@ fun CameraScreen() {
                         },
                     )
 
-                    RewindOverlay(visible = rewindVisible, label = rewindLabel)
-
                     playbackUri?.let { uri ->
                         androidx.compose.ui.viewinterop.AndroidView(
                             modifier = Modifier.fillMaxSize(),
                             factory = { ctx ->
                                 VideoView(ctx).apply {
-                                    setOnCompletionListener { playbackUri = null }
-                                    setOnErrorListener { _, _, _ -> playbackUri = null; true }
+                                    tag = uri          // fix1: prevent update re-init on first call
+                                    setZOrderMediaOverlay(true)   // fix2: overlay above camera SurfaceView
+                                    setOnCompletionListener { mainHandler.post { playbackUri = null } }
+                                    setOnErrorListener { _, _, _ -> mainHandler.post { playbackUri = null }; true }
                                     setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
                                     setVideoURI(uri)
                                     start()
                                 }
                             },
-                            update = { v -> v.setVideoURI(uri); v.start() },
+                            update = { v ->
+                                if (v.tag != uri) {
+                                    v.tag = uri
+                                    v.setVideoURI(uri)
+                                    v.start()
+                                }
+                            },
+                        )
+                    }
+
+                    RewindOverlay(visible = rewindVisible, label = rewindLabel)
+
+                    if (isRecording) {
+                        LivePill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
+                        Timecode(
+                            elapsedMs = (nowMs - sessionStartMs).coerceAtLeast(0),
+                            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                         )
                     }
                 }
 
-                // HUD overlays anchored to the preview frame.
-                if (isRecording) {
-                    LivePill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
-                }
-                Timecode(
-                    elapsedMs = if (isRecording) (nowMs - sessionStartMs).coerceAtLeast(0) else 0L,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
-                )
                 FooterLabel(
                     text = "ACTION REPLAY CAM",
-                    modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 20.dp),
                 )
                 FooterLabel(
                     text = "720p · 30FPS",
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 20.dp),
                 )
             }
 
