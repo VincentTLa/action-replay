@@ -180,17 +180,22 @@ class CameraEngine(
         val label = "rewind${seconds}s"
         val rewindUs = seconds * 1_000_000L
         Thread {
-            val samples = ringBuffer.snapshotLast(rewindUs)
-            if (samples.isNullOrEmpty()) {
-                listener.onClipSaved(null, label)
-                return@Thread
+            try {
+                val samples = ringBuffer.snapshotLast(rewindUs)
+                if (samples.isNullOrEmpty()) {
+                    listener.onClipSaved(null, label)
+                    return@Thread
+                }
+                val file = writeClip(samples) ?: run {
+                    listener.onClipSaved(null, label)
+                    return@Thread
+                }
+                val uri = ClipSaver.publish(context, file, label)
+                listener.onClipSaved(uri, label)
+            } catch (t: Throwable) {
+                Log.e(TAG, "rewindAndSave failed", t)
+                listener.onError("Rewind failed: ${t.message}", t)
             }
-            val file = writeClip(samples) ?: run {
-                listener.onClipSaved(null, label)
-                return@Thread
-            }
-            val uri = ClipSaver.publish(context, file, label)
-            listener.onClipSaved(uri, label)
         }.start()
     }
 
@@ -497,7 +502,8 @@ class CameraEngine(
         muxer.start()
         val basePts = samples.first { it.track == Track.VIDEO }.ptsUs
         for (s in samples) {
-            val rebased = (s.ptsUs - basePts).coerceAtLeast(0L)
+            val rebased = s.ptsUs - basePts
+            if (rebased < 0) continue   // ponytail: audio clock skew vs video PTS; skip pre-anchor samples rather than clamping to 0 (avoids non-monotonic muxer writes)
             val info = MediaCodec.BufferInfo().apply {
                 set(0, s.data.size, rebased, s.flags)
             }
@@ -508,8 +514,10 @@ class CameraEngine(
                 Log.w(TAG, "clip muxer write failed", t)
             }
         }
-        try { muxer.stop() } catch (_: Throwable) {}
+        var muxerStopped = false
+        try { muxer.stop(); muxerStopped = true } catch (t: Throwable) { Log.w(TAG, "clip muxer stop failed", t) }
         try { muxer.release() } catch (_: Throwable) {}
+        if (!muxerStopped) { file.delete(); return null }
         return file
     }
 }

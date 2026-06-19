@@ -180,16 +180,22 @@ fun CameraScreen() {
                                     setZOrderMediaOverlay(true)   // fix2: overlay above camera SurfaceView
                                     setOnCompletionListener { mainHandler.post { playbackUri = null } }
                                     setOnErrorListener { _, _, _ -> mainHandler.post { playbackUri = null }; true }
+                                    setOnPreparedListener { mp -> mp.start() }
                                     setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
                                     setVideoURI(uri)
-                                    start()
                                 }
                             },
                             update = { v ->
                                 if (v.tag != uri) {
                                     v.tag = uri
+                                    v.setOnCompletionListener(null)
+                                    v.setOnErrorListener(null)
+                                    v.setOnPreparedListener { mp ->
+                                        v.setOnCompletionListener { mainHandler.post { playbackUri = null } }
+                                        v.setOnErrorListener { _, _, _ -> mainHandler.post { playbackUri = null }; true }
+                                        mp.start()
+                                    }
                                     v.setVideoURI(uri)
-                                    v.start()
                                 }
                             },
                         )
@@ -203,6 +209,9 @@ fun CameraScreen() {
                             elapsedMs = (nowMs - sessionStartMs).coerceAtLeast(0),
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                         )
+                    }
+                    if (playbackUri != null) {
+                        RewindPill(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp))
                     }
                 }
 
@@ -282,14 +291,14 @@ private fun ActionReplayPanel(
 
         CircleButton(
             label = "REWIND\n3 SEC",
-            enabled = bufferedSec >= 3f,
+            enabled = isRecording && bufferedSec >= 3f,
             ringColor = Purple,
             onClick = onRewind3,
         ) { drawRewindIcon(it, Purple) }
 
         CircleButton(
             label = "REWIND\n5 SEC",
-            enabled = bufferedSec >= 5f,
+            enabled = isRecording && bufferedSec >= 5f,
             ringColor = Purple,
             onClick = onRewind5,
         ) { drawRewindIcon(it, Purple) }
@@ -447,6 +456,35 @@ private fun LivePill(modifier: Modifier = Modifier) {
         Spacer(Modifier.width(6.dp))
         Text(
             text = "LIVE",
+            color = Color.White,
+            style = TextStyle(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 1.5.sp,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun RewindPill(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Purple)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(Color.White),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "REWIND",
             color = Color.White,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
