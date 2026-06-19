@@ -171,24 +171,7 @@ fun CameraScreen() {
                         },
                     )
 
-                    AnimatedVisibility(
-                        visible = rewindVisible,
-                        enter = fadeIn(animationSpec = tween(280, easing = EaseInOut))
-                            + scaleIn(initialScale = 0.85f, animationSpec = tween(280, easing = EaseInOut)),
-                        exit = fadeOut(animationSpec = tween(420, easing = EaseInOut))
-                            + scaleOut(targetScale = 1.15f, animationSpec = tween(420, easing = EaseInOut)),
-                    ) {
-                        Text(
-                            text = rewindLabel,
-                            style = TextStyle(
-                                brush = Brush.linearGradient(listOf(Cyan, Purple)),
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 96.sp,
-                                letterSpacing = 4.sp,
-                            ),
-                        )
-                    }
+                    RewindOverlay(visible = rewindVisible, label = rewindLabel)
 
                     playbackUri?.let { uri ->
                         androidx.compose.ui.viewinterop.AndroidView(
@@ -305,6 +288,33 @@ private fun ActionReplayPanel(
 
         Spacer(Modifier.weight(1f))
         LiveDotFooter()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rewind overlay — extracted so AnimatedVisibility resolves to the top-level
+// overload unambiguously (no BoxScope in scope avoids K2 UNIT_CALL_WITH_RECEIVER)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun RewindOverlay(visible: Boolean, label: String) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(280, easing = EaseInOut))
+            + scaleIn(initialScale = 0.85f, animationSpec = tween(280, easing = EaseInOut)),
+        exit = fadeOut(animationSpec = tween(420, easing = EaseInOut))
+            + scaleOut(targetScale = 1.15f, animationSpec = tween(420, easing = EaseInOut)),
+    ) {
+        Text(
+            text = label,
+            style = TextStyle(
+                brush = Brush.linearGradient(listOf(Cyan, Purple)),
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Black,
+                fontSize = 96.sp,
+                letterSpacing = 4.sp,
+            ),
+        )
     }
 }
 
