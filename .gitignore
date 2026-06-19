@@ -1,0 +1,21 @@
+*.iml
+.gradle
+.kotlin
+local.properties
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.hprof
+release/
+
+# Signing material — never commit
+*.jks
+*.keystore
+keystore.properties
+
+# IDE: ignore .idea/ except shared project conventions
+.idea/*
+!.idea/codeStyles/
+!.idea/inspectionProfiles/
