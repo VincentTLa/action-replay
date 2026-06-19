@@ -8,6 +8,13 @@ import android.view.SurfaceView
 import android.widget.MediaController
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.EaseInOut
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -84,6 +91,15 @@ fun CameraScreen() {
     var playbackUri by remember { mutableStateOf<Uri?>(null) }
     var sessionStartMs by remember { mutableLongStateOf(0L) }
     var nowMs by remember { mutableLongStateOf(0L) }
+    var rewindLabel by remember { mutableStateOf("") }
+    var rewindVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(rewindLabel, rewindVisible) {
+        if (rewindVisible) {
+            delay(700)
+            rewindVisible = false
+        }
+    }
 
     val engine = remember {
         CameraEngine(context, object : CameraEngine.Listener {
@@ -154,6 +170,26 @@ fun CameraScreen() {
                         },
                     )
 
+                    AnimatedVisibility(
+                        visible = rewindVisible,
+                        modifier = Modifier.align(Alignment.Center),
+                        enter = fadeIn(animationSpec = tween(280, easing = EaseInOut))
+                            + scaleIn(initialScale = 0.85f, animationSpec = tween(280, easing = EaseInOut)),
+                        exit = fadeOut(animationSpec = tween(420, easing = EaseInOut))
+                            + scaleOut(targetScale = 1.15f, animationSpec = tween(420, easing = EaseInOut)),
+                    ) {
+                        Text(
+                            text = rewindLabel,
+                            style = TextStyle(
+                                brush = Brush.linearGradient(listOf(Cyan, Purple)),
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 96.sp,
+                                letterSpacing = 4.sp,
+                            ),
+                        )
+                    }
+
                     playbackUri?.let { uri ->
                         androidx.compose.ui.viewinterop.AndroidView(
                             modifier = Modifier.fillMaxSize(),
@@ -200,8 +236,16 @@ fun CameraScreen() {
                     isRecording = true
                 },
                 onStop = { engine.endSession() },
-                onRewind3 = { engine.rewindAndSave(3) },
-                onRewind5 = { engine.rewindAndSave(5) },
+                onRewind3 = {
+                    rewindLabel = "-3s"
+                    rewindVisible = true
+                    engine.rewindAndSave(3)
+                },
+                onRewind5 = {
+                    rewindLabel = "-5s"
+                    rewindVisible = true
+                    engine.rewindAndSave(5)
+                },
             )
         }
 
@@ -229,9 +273,7 @@ private fun ActionReplayPanel(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Spacer(Modifier.height(8.dp))
-        ActionReplayHeader()
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.weight(1f))
 
         CircleButton(
             label = "PLAY",
@@ -263,31 +305,6 @@ private fun ActionReplayPanel(
 
         Spacer(Modifier.weight(1f))
         LiveDotFooter()
-    }
-}
-
-@Composable
-private fun ActionReplayHeader() {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = "ACTION\nREPLAY",
-            textAlign = TextAlign.Center,
-            style = TextStyle(
-                brush = Brush.linearGradient(listOf(Cyan, Purple)),
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Black,
-                fontSize = 18.sp,
-                letterSpacing = 2.sp,
-                lineHeight = 20.sp,
-            ),
-        )
-        Spacer(Modifier.height(6.dp))
-        Box(
-            modifier = Modifier
-                .width(60.dp)
-                .height(1.dp)
-                .background(Divider),
-        )
     }
 }
 

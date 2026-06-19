@@ -70,9 +70,6 @@ class CameraEngine(
     private var cameraHandler: Handler? = null
     private var videoCodecThread: HandlerThread? = null
     private var videoCodecHandler: Handler? = null
-    private var audioCodecThread: HandlerThread? = null
-    private var audioCodecHandler: Handler? = null
-    private var audioReaderThread: HandlerThread? = null
 
     private var cameraDevice: CameraDevice? = null
     private var session: CameraCaptureSession? = null
@@ -116,7 +113,7 @@ class CameraEngine(
             setupAudioRecord()
             videoEncoder?.start()
             audioEncoder?.start()
-            startAudioReader()
+            startAudioWorker()
         } catch (t: Throwable) {
             listener.onError("start failed: ${t.message}", t)
             stop()
@@ -214,16 +211,11 @@ class CameraEngine(
         cameraHandler = Handler(cameraThread!!.looper)
         videoCodecThread = HandlerThread("vcodec").also { it.start() }
         videoCodecHandler = Handler(videoCodecThread!!.looper)
-        audioCodecThread = HandlerThread("acodec").also { it.start() }
-        audioCodecHandler = Handler(audioCodecThread!!.looper)
-        audioReaderThread = HandlerThread("aread").also { it.start() }
     }
 
     private fun stopThreads() {
         cameraThread?.quitSafely(); cameraThread = null; cameraHandler = null
         videoCodecThread?.quitSafely(); videoCodecThread = null; videoCodecHandler = null
-        audioCodecThread?.quitSafely(); audioCodecThread = null; audioCodecHandler = null
-        audioReaderThread?.quitSafely(); audioReaderThread = null
     }
 
     private fun setupVideoEncoder() {
@@ -246,8 +238,9 @@ class CameraEngine(
             setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BITRATE)
             setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16 * 1024)
         }
+        // Sync mode — feed input AND drain output from the audio worker thread.
+        // ponytail: mixing async setCallback with sync dequeue* throws ISE, hence sync here.
         val codec = MediaCodec.createEncoderByType(AUDIO_MIME)
-        codec.setCallback(AudioCodecCallback(), audioCodecHandler)
         codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         audioEncoder = codec
     }
@@ -269,37 +262,47 @@ class CameraEngine(
         audioRecord?.startRecording()
     }
 
-    private fun startAudioReader() {
+    private fun startAudioWorker() {
         val recorder = audioRecord ?: return
         val codec = audioEncoder ?: return
         audioReading = true
         Thread {
-            val buf = ByteArray(4096)
+            val pcm = ByteArray(4096)
+            val info = MediaCodec.BufferInfo()
             while (audioReading) {
-                val read = recorder.read(buf, 0, buf.size)
-                if (read <= 0) continue
-                // Feed the codec until it accepts our bytes; ponytail: dropping is fine on overflow.
-                val inputIdx = try {
-                    codec.dequeueInputBuffer(10_000)
-                } catch (_: IllegalStateException) {
-                    break
+                // ---- input: read PCM and feed the encoder ----
+                val read = recorder.read(pcm, 0, pcm.size)
+                if (read > 0) {
+                    val inputIdx = try { codec.dequeueInputBuffer(10_000) }
+                    catch (_: IllegalStateException) { -1 }
+                    if (inputIdx >= 0) {
+                        val inputBuf = try { codec.getInputBuffer(inputIdx) }
+                        catch (_: IllegalStateException) { null }
+                        if (inputBuf != null) {
+                            inputBuf.clear()
+                            inputBuf.put(pcm, 0, read)
+                            val ptsUs = SystemClock.elapsedRealtimeNanos() / 1000
+                            try {
+                                codec.queueInputBuffer(inputIdx, 0, read, ptsUs, 0)
+                            } catch (_: IllegalStateException) { /* shutting down */ }
+                        }
+                    }
                 }
-                if (inputIdx < 0) continue
-                val inputBuf = try {
-                    codec.getInputBuffer(inputIdx)
-                } catch (_: IllegalStateException) {
-                    break
-                } ?: continue
-                inputBuf.clear()
-                inputBuf.put(buf, 0, read)
-                val ptsUs = SystemClock.elapsedRealtimeNanos() / 1000
-                try {
-                    codec.queueInputBuffer(inputIdx, 0, read, ptsUs, 0)
-                } catch (_: IllegalStateException) {
-                    break
+                // ---- output: drain any ready encoded buffers ----
+                while (audioReading) {
+                    val outIdx = try { codec.dequeueOutputBuffer(info, 0) }
+                    catch (_: IllegalStateException) { break }
+                    when {
+                        outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                            audioFormat = codec.outputFormat
+                            maybeStartLiveMuxer()
+                        }
+                        outIdx < 0 -> break
+                        else -> handleEncodedOutput(codec, outIdx, info, Track.AUDIO)
+                    }
                 }
             }
-        }.also { it.name = "audio-reader" }.start()
+        }.also { it.name = "audio-worker" }.start()
     }
 
     @SuppressLint("MissingPermission")
@@ -380,29 +383,6 @@ class CameraEngine(
 
         override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
             listener.onError("video codec error: ${e.message}", e)
-        }
-    }
-
-    private inner class AudioCodecCallback : MediaCodec.Callback() {
-        override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
-            // Input is hand-fed by the audio-reader thread via dequeueInputBuffer.
-        }
-
-        override fun onOutputBufferAvailable(
-            codec: MediaCodec,
-            index: Int,
-            info: MediaCodec.BufferInfo
-        ) {
-            handleEncodedOutput(codec, index, info, Track.AUDIO)
-        }
-
-        override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
-            audioFormat = format
-            maybeStartLiveMuxer()
-        }
-
-        override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
-            listener.onError("audio codec error: ${e.message}", e)
         }
     }
 
