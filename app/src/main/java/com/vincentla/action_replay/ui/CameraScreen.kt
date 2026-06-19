@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
@@ -183,6 +184,7 @@ fun CameraScreen() {
                                     setOnPreparedListener { mp -> mp.start() }
                                     setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
                                     setVideoURI(uri)
+                                    start()
                                 }
                             },
                             update = { v ->
@@ -358,7 +360,7 @@ private fun CircleButton(
                 .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            Canvas(modifier = Modifier.size(22.dp)) {
+            Canvas(modifier = Modifier.size(22.dp).alpha(alpha)) {
                 iconDraw(size.minDimension)
             }
         }
