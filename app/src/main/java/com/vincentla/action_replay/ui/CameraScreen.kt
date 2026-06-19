@@ -154,6 +154,7 @@ fun CameraScreen() {
                         .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(6.dp))
                         .border(1.dp, Divider, RoundedCornerShape(6.dp)),
+                    contentAlignment = Alignment.Center,
                 ) {
                     androidx.compose.ui.viewinterop.AndroidView(
                         modifier = Modifier.fillMaxSize(),
@@ -172,7 +173,6 @@ fun CameraScreen() {
 
                     AnimatedVisibility(
                         visible = rewindVisible,
-                        modifier = Modifier.align(Alignment.Center),
                         enter = fadeIn(animationSpec = tween(280, easing = EaseInOut))
                             + scaleIn(initialScale = 0.85f, animationSpec = tween(280, easing = EaseInOut)),
                         exit = fadeOut(animationSpec = tween(420, easing = EaseInOut))
