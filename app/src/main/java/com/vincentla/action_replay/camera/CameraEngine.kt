@@ -82,6 +82,8 @@ class CameraEngine(
 
     @Volatile private var videoFormat: MediaFormat? = null
     @Volatile private var audioFormat: MediaFormat? = null
+    @Volatile private var videoStartPts = Long.MIN_VALUE
+    @Volatile private var audioStartPts = Long.MIN_VALUE
 
     private val sessionLock = Any()
     private var liveMuxer: MediaMuxer? = null
@@ -107,6 +109,8 @@ class CameraEngine(
         }
         running = true
         ringBuffer.clear()
+        videoStartPts = Long.MIN_VALUE
+        audioStartPts = Long.MIN_VALUE
         try {
             startThreads()
             setupVideoEncoder()
@@ -165,6 +169,7 @@ class CameraEngine(
             pendingSessionStart = true
         }
         requestKeyframe()
+        maybeStartLiveMuxer()
     }
 
     fun endSession() {
@@ -416,7 +421,30 @@ class CameraEngine(
             val data = ByteArray(info.size)
             outBuf.get(data)
 
-            val sample = Sample(track, data, info.presentationTimeUs, info.flags)
+            val rawPts = info.presentationTimeUs
+
+            // Track first PTS of each track to compute the cross-clock offset.
+            if (track == Track.VIDEO && videoStartPts == Long.MIN_VALUE) videoStartPts = rawPts
+            if (track == Track.AUDIO && audioStartPts == Long.MIN_VALUE) audioStartPts = rawPts
+
+            // Normalize audio into the video time domain. Camera sensor timestamps and
+            // SystemClock.elapsedRealtimeNanos() can differ by the full device uptime (hours).
+            // Shifting audio by the constant epoch difference keeps the ring buffer and muxer
+            // on a single monotonic clock so trim(), snapshotLast(), and writeClip() all agree.
+            val ptsUs = if (track == Track.AUDIO) {
+                val vs = videoStartPts
+                val as_ = audioStartPts
+                if (vs == Long.MIN_VALUE || as_ == Long.MIN_VALUE) {
+                    // Offset not yet established; drop this early audio sample.
+                    codec.releaseOutputBuffer(index, false)
+                    return
+                }
+                rawPts - (as_ - vs)
+            } else {
+                rawPts
+            }
+
+            val sample = Sample(track, data, ptsUs, info.flags)
             ringBuffer.add(sample)
             if (track == Track.VIDEO) {
                 listener.onBufferProgress(ringBuffer.bufferedUs() / 1_000_000f)
