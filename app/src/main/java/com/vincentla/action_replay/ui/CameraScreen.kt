@@ -242,6 +242,7 @@ fun CameraScreen() {
                 isRecording = isRecording,
                 bufferedSec = effectiveBuffer,
                 onPlay = {
+                    cameraUptimeSec = 0f      // reset fallback clock so rewind buttons re-earn their threshold
                     engine.beginSession()
                     sessionStartMs = System.currentTimeMillis()
                     isRecording = true

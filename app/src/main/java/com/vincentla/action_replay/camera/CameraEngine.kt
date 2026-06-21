@@ -80,8 +80,8 @@ class CameraEngine(
     @Volatile private var audioReading = false
     private var audioWorkerThread: Thread? = null
 
-    private var videoFormat: MediaFormat? = null
-    private var audioFormat: MediaFormat? = null
+    @Volatile private var videoFormat: MediaFormat? = null
+    @Volatile private var audioFormat: MediaFormat? = null
 
     private val sessionLock = Any()
     private var liveMuxer: MediaMuxer? = null
