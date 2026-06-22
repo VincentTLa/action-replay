@@ -10,6 +10,7 @@ import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOut
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,6 +83,8 @@ private val RingFill = Color(0xFF0B1428)
 private val Divider = Color(0xFF1F2A44)
 
 private const val BUFFER_POLL_MS = 100L
+private const val TRANSITION_MS = 500          // ease-in/ease-out per leg (dip-in, dip-out)
+private const val SETTLE_MS = 120L             // ponytail: fixed settle for VideoView (SurfaceView) to swap under cover; bump if first frame flashes black on slow devices
 
 @Composable
 fun CameraScreen() {
@@ -90,11 +94,19 @@ fun CameraScreen() {
     var bufferedSec by remember { mutableStateOf(0f) }
     var cameraUptimeSec by remember { mutableStateOf(0f) }
     var isRecording by remember { mutableStateOf(false) }
-    var playbackUri by remember { mutableStateOf<Uri?>(null) }
+    var requestedUri by remember { mutableStateOf<Uri?>(null) }   // desired clip (null = live)
+    var displayedUri by remember { mutableStateOf<Uri?>(null) }   // clip actually mounted in VideoView
     var sessionStartMs by remember { mutableLongStateOf(0L) }
     var nowMs by remember { mutableLongStateOf(0L) }
     var rewindLabel by remember { mutableStateOf("") }
     var rewindVisible by remember { mutableStateOf(false) }
+
+    var scrimTarget by remember { mutableFloatStateOf(0f) }
+    val scrimAlpha by animateFloatAsState(
+        targetValue = scrimTarget,
+        animationSpec = tween(TRANSITION_MS, easing = EaseInOut),
+        label = "scrim",
+    )
 
     LaunchedEffect(rewindLabel, rewindVisible) {
         if (rewindVisible) {
@@ -103,12 +115,27 @@ fun CameraScreen() {
         }
     }
 
+    // Dip-to-black scene transition (both directions). The scrim is a Compose Box
+    // drawn on the window surface, above the VideoView's media-overlay surface, so
+    // it hides the SurfaceView pop that animating the VideoView's own alpha cannot.
+    LaunchedEffect(requestedUri) {
+        if (requestedUri == displayedUri) {
+            scrimTarget = 0f                // already settled on the desired scene; keep scrim down
+            return@LaunchedEffect
+        }
+        scrimTarget = 1f                    // dip to black over the current scene
+        delay(TRANSITION_MS.toLong())       // wait for scrim fully opaque
+        displayedUri = requestedUri         // swap mounted clip under cover (mount or unmount)
+        delay(SETTLE_MS)                    // let VideoView surface settle / show first frame
+        scrimTarget = 0f                    // reveal the new scene
+    }
+
     val engine = remember {
         CameraEngine(context, object : CameraEngine.Listener {
             override fun onClipSaved(uri: Uri?, label: String) {
                 mainHandler.post {
                     if (uri != null) {
-                        playbackUri = uri
+                        requestedUri = uri
                         Toast.makeText(context, "Saved $label", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "Clip save failed", Toast.LENGTH_SHORT).show()
@@ -180,15 +207,17 @@ fun CameraScreen() {
                         },
                     )
 
-                    playbackUri?.let { uri ->
+                    displayedUri?.let { uri ->
                         androidx.compose.ui.viewinterop.AndroidView(
                             modifier = Modifier.fillMaxSize(),
                             factory = { ctx ->
                                 VideoView(ctx).apply {
                                     tag = uri          // fix1: prevent update re-init on first call
                                     setZOrderMediaOverlay(true)   // fix2: overlay above camera SurfaceView
-                                    setOnCompletionListener { mainHandler.post { playbackUri = null } }
-                                    setOnErrorListener { _, _, _ -> mainHandler.post { playbackUri = null }; true }
+                                    // Guard: a late completion/error from a recycled VideoView must not
+                                    // cancel a clip that has since been requested (rapid re-rewind).
+                                    setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
+                                    setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) requestedUri = null }; true }
                                     setOnPreparedListener { mp -> mp.start() }
                                     setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
                                     setVideoURI(uri)
@@ -201,13 +230,23 @@ fun CameraScreen() {
                                     v.setOnCompletionListener(null)
                                     v.setOnErrorListener(null)
                                     v.setOnPreparedListener { mp ->
-                                        v.setOnCompletionListener { mainHandler.post { playbackUri = null } }
-                                        v.setOnErrorListener { _, _, _ -> mainHandler.post { playbackUri = null }; true }
+                                        v.setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
+                                        v.setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) requestedUri = null }; true }
                                         mp.start()
                                     }
                                     v.setVideoURI(uri)
                                 }
                             },
+                        )
+                    }
+
+                    // Dip-to-black scrim — drawn above the VideoView's overlay surface.
+                    if (scrimAlpha > 0f) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(scrimAlpha)
+                                .background(Color.Black),
                         )
                     }
 
@@ -220,7 +259,7 @@ fun CameraScreen() {
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                         )
                     }
-                    if (playbackUri != null) {
+                    if (displayedUri != null) {
                         RewindPill(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp))
                     }
                 }
