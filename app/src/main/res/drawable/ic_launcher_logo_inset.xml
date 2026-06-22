@@ -2,4 +2,4 @@
 <!-- 20% inset pulls the logo well inside the adaptive-icon safe zone so squircle/parallax masks show the full circle. -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
     android:drawable="@drawable/ic_launcher_logo"
-    android:inset="20%" />
+    android:inset="18%" />
