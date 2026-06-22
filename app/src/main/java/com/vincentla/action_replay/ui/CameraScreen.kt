@@ -108,6 +108,9 @@ private const val BUFFER_POLL_MS = 100L
 private const val TRANSITION_MS = 500          // ease-in/ease-out per leg (dip-in, dip-out)
 private const val SETTLE_MS = 120L             // ponytail: fixed settle for VideoView (SurfaceView) to swap under cover; bump if first frame flashes black on slow devices
 private const val REWIND_SPEED = 0.5f          // inline replay speed; saved file stays normal-speed
+// ponytail: last-resort cap. Longest replay is a 10s clip at 0.5× ≈ 20s + transitions; 30s clears
+// it comfortably yet still rescues END if a VideoView never reports completion (some OEMs).
+private const val REWIND_WATCHDOG_MS = 30_000L
 
 // LocalContext can be a ContextWrapper; unwrap to the hosting Activity (null-safe).
 private fun Context.findActivity(): Activity? {
@@ -197,6 +200,17 @@ fun CameraScreen() {
         if (displayedUri == null) rewindBusy = false   // preview over, back to live → re-enable rewind
     }
 
+    // Watchdog: if a replay's VideoView never reports completion/error (some OEMs), force a return
+    // to live. rewindBusy now also gates END, so without this a stuck replay would leave the user
+    // unable to end and save their battle for the rest of the session. Cancels itself when the
+    // normal path clears rewindBusy (the key change re-runs this effect).
+    LaunchedEffect(rewindBusy) {
+        if (rewindBusy) {
+            delay(REWIND_WATCHDOG_MS)
+            if (rewindBusy) requestedUri = null   // unmount replay → transition above returns to live
+        }
+    }
+
     // Lock orientation while recording: MediaMuxer's orientation hint is fixed at file creation,
     // so a mid-record 180° flip would otherwise produce a half-upside-down clip. Free to flip otherwise.
     LaunchedEffect(isRecording) {
@@ -221,7 +235,7 @@ fun CameraScreen() {
             override fun onSessionSaved(uri: Uri?) {
                 mainHandler.post {
                     isRecording = false
-                    val msg = if (uri != null) "Session saved" else "Session save failed"
+                    val msg = if (uri != null) "Battle saved" else "Couldn't save the battle"
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
             }
@@ -463,21 +477,23 @@ private fun ActionReplayPanel(
     ) {
         Spacer(Modifier.weight(1f))
 
+        // One record toggle: LAUNCH the battle when idle, END (save) it when live. The label
+        // always states what the next press does, so there's no separate STOP to confuse. END is
+        // disabled while an inline replay is playing so a reflex tap can't cut the battle short —
+        // it re-enables the instant the replay returns to live.
+        val live = isRecording
         CircleButton(
-            label = "PLAY",
-            contentDescription = "Start recording with a launch countdown",
-            enabled = !isRecording && !countingDown,
-            ringColor = Cyan,
-            onClick = onPlay,
-        ) { drawPlayIcon(it, Cyan) }
+            label = if (live) "END" else "LAUNCH",
+            contentDescription = if (live) "End and save the battle" else "Launch — start recording after a countdown",
+            // Disabled during the countdown (incl. the "GO SHOOT!" hold, where isRecording is already
+            // true but capture hasn't started) and during an inline replay.
+            enabled = if (live) (!rewindBusy && !countingDown) else !countingDown,
+            ringColor = if (live) StrikeRed else Cyan,
+            onClick = if (live) onStop else onPlay,
+        ) { s -> if (live) drawStopIcon(s, StrikeRed) else drawPlayIcon(s, Cyan) }
 
-        CircleButton(
-            label = "STOP",
-            contentDescription = "Stop and save recording",
-            enabled = isRecording,
-            ringColor = StrikeRed,
-            onClick = onStop,
-        ) { drawStopIcon(it, StrikeRed) }
+        // Hairline splits the two jobs: run the battle (above) vs. replay a moment (below).
+        Box(modifier = Modifier.width(28.dp).height(1.dp).background(Divider))
 
         CircleButton(
             label = "REPLAY\n5 SEC",

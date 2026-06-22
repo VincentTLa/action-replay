@@ -202,14 +202,23 @@ class CameraEngine(
         var publishedFile: File? = null
         synchronized(sessionLock) {
             if (!pendingSessionStart && !liveStarted) return
-            publishedFile = liveMuxerFile
-            finalizeLiveMuxerLocked(publish = true)
+            // Only a muxer that actually started (a keyframe was written, liveStarted=true) holds a
+            // valid file. Ending while still pending (END tapped before the first keyframe) must
+            // DISCARD — publishing the header-only muxer would put a corrupt clip in the gallery and
+            // falsely report success.
+            val started = liveStarted
+            publishedFile = if (started) liveMuxerFile else null
+            finalizeLiveMuxerLocked(publish = started)
         }
-        publishedFile?.let { file ->
+        val file = publishedFile
+        if (file != null) {
             Thread {
                 val uri = ClipSaver.publish(context, file, "session")
                 listener.onSessionSaved(uri)
             }.start()
+        } else {
+            // Nothing was captured; clear the recording state in the UI (no toast-worthy save).
+            listener.onSessionSaved(null)
         }
     }
 
