@@ -245,14 +245,15 @@ fun CameraScreen() {
             // ---- Preview pane (3/4) -------------------------------------
             Box(
                 modifier = Modifier
-                    .weight(1f)               // fill all width left by the content-sized button panel
+                    .weight(3f)
                     .fillMaxHeight()
                     .padding(16.dp),
-                contentAlignment = Alignment.CenterEnd,   // hug the buttons; any 16:9 letterbox sits on the left
+                contentAlignment = Alignment.Center,
             ) {
                 Box(
                     modifier = Modifier
-                        .aspectRatio(16f / 9f)   // largest 16:9 that fits (no fillMaxWidth → won't clip in a wide pane)
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
                         .clip(RoundedCornerShape(6.dp))
                         .border(1.dp, Divider, RoundedCornerShape(6.dp)),
                     contentAlignment = Alignment.Center,
@@ -347,7 +348,7 @@ fun CameraScreen() {
             // ---- Right panel (1/4) --------------------------------------
             val effectiveBuffer = maxOf(bufferedSec, cameraUptimeSec)
             ActionReplayPanel(
-                modifier = Modifier.fillMaxHeight(),   // content width — preview pane (weight 1f) takes the rest
+                modifier = Modifier.weight(1f).fillMaxHeight(),
                 isRecording = isRecording,
                 bufferedSec = effectiveBuffer,
                 rewindBusy = rewindBusy,
