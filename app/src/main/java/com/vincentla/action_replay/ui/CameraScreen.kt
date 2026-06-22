@@ -31,6 +31,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
@@ -190,6 +192,9 @@ fun CameraScreen() {
     LaunchedEffect(requestedUri) {
         if (requestedUri == displayedUri) {
             scrimTarget = 0f                // already settled on the desired scene; keep scrim down
+            // Invariant: a live scene never coexists with the replay lock. Clearing here makes it
+            // impossible for any early-return path to strand rewindBusy=true on the live view.
+            if (displayedUri == null) rewindBusy = false
             return@LaunchedEffect
         }
         scrimTarget = 1f                    // dip to black over the current scene
@@ -339,6 +344,20 @@ fun CameraScreen() {
                         )
                     }
 
+                    // Skip-to-live: the clip is already saved (rewindAndSave wrote it on tap), so the
+                    // inline replay is just a preview — let the user bail back to the live battle
+                    // instead of waiting out the full 0.5× playback. Tapping anywhere on the replay
+                    // sets requestedUri = null, the same thing onCompletion does, which drives the
+                    // return transition and clears rewindBusy. Not a MediaController (no pause/scrub),
+                    // so it can't strand the lock. The labelled chip below is the discoverable/a11y path.
+                    if (displayedUri != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(Unit) { detectTapGestures { requestedUri = null } },
+                        )
+                    }
+
                     // X-slash wipe — replaces the dip-to-black. The electric-blue fill at full
                     // alpha still fully covers the SurfaceView swap at peak (same cover guarantee
                     // as before); the white/cyan X grows from center as the scene flips, giving
@@ -380,6 +399,10 @@ fun CameraScreen() {
                     }
                     if (displayedUri != null) {
                         RewindPill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
+                        BackToLiveChip(
+                            onClick = { requestedUri = null },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                        )
                     }
                 }
 
@@ -770,6 +793,37 @@ private fun RewindPill(modifier: Modifier = Modifier) {
     ) {
         Text(
             text = "> REPLAY 0.5x",
+            color = Cyan,
+            style = TextStyle(
+                fontFamily = BattleFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                letterSpacing = 1.5.sp,
+            ),
+        )
+    }
+}
+
+// Tappable "return to live" control shown during a replay (the whole replay is also tappable;
+// this is the discoverable, TalkBack-reachable affordance). Button-styled so it reads as pressable.
+@Composable
+private fun BackToLiveChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(Panel)
+            .border(1.dp, Cyan, RoundedCornerShape(3.dp))
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = "Back to the live battle"; role = Role.Button }
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(6.dp).clip(CircleShape).background(StrikeRed),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "BACK TO LIVE",
             color = Cyan,
             style = TextStyle(
                 fontFamily = BattleFont,
