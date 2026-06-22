@@ -260,14 +260,17 @@ fun CameraScreen() {
                     RewindOverlay(visible = rewindVisible, label = rewindLabel)
 
                     if (isRecording) {
-                        LivePill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
+                        // Hide LIVE while a rewind clip is on screen — REWIND takes its slot.
+                        if (displayedUri == null) {
+                            LivePill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
+                        }
                         Timecode(
                             elapsedMs = (nowMs - sessionStartMs).coerceAtLeast(0),
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                         )
                     }
                     if (displayedUri != null) {
-                        RewindPill(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp))
+                        RewindPill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
                     }
                 }
 
