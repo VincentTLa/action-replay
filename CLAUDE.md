@@ -32,7 +32,7 @@
 
 ## Known simplifications / `ponytail:` markers
 - No foreground service: backgrounding the app stops capture. Add a `MediaProjection`-style foreground service later if "must keep recording while user switches apps" becomes a requirement.
-- 1280×720 @ 30fps, GOP=1s, ~5 Mbps H.264, AAC 128 kbps — fixed; tune in `CameraEngine` if a device misbehaves.
+- **Resolution is device-best (2026-06-22):** `selectCaptureConfig()` picks the largest 16:9 encoder size the back camera supports, **capped at 1920×1080** (4K skipped for encoder/rolling-buffer load), and scales bitrate via `VIDEO_BITS_PER_PIXEL` (≈5 Mbps at 720p30). **FPS stays 30** — >30 needs a constrained high-speed capture session (not implemented). The chosen `{height}p · {fps}FPS` is reported to the UI via `Listener.onCaptureConfig` and shown in the footer. GOP=1s, H.264, AAC 128 kbps. The `VIDEO_W/H/FPS/BITRATE` consts are now fallbacks.
 - Ring buffer holds 8s of headroom (over the 5s spec) so the rewind-5s extraction can always anchor on a prior keyframe.
 - Inline playback uses `VideoView` rather than Media3/ExoPlayer to avoid pulling in a large dep tree.
 

@@ -23,6 +23,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
+import android.util.Size
 import android.view.Surface
 import android.view.WindowManager
 import androidx.core.content.ContextCompat
@@ -31,11 +32,17 @@ import java.nio.ByteBuffer
 
 private const val TAG = "CameraEngine"
 
+// Fallback config; the real values are chosen per-device in selectCaptureConfig().
 private const val VIDEO_W = 1280
 private const val VIDEO_H = 720
 private const val VIDEO_FPS = 30
 private const val VIDEO_BITRATE = 5_000_000
 private const val VIDEO_GOP_SEC = 1
+// Cap for the device-best size: 4K is skipped to keep the encoder + ~8s rolling buffer sane.
+private const val VIDEO_MAX_W = 1920
+private const val VIDEO_MAX_H = 1080
+// Tuned so 720p30 ≈ 5 Mbps; scales the bitrate with the chosen resolution.
+private const val VIDEO_BITS_PER_PIXEL = 0.18
 private const val VIDEO_MIME = MediaFormat.MIMETYPE_VIDEO_AVC
 
 private const val AUDIO_MIME = MediaFormat.MIMETYPE_AUDIO_AAC
@@ -64,6 +71,7 @@ class CameraEngine(
         fun onSessionSaved(uri: Uri?)
         fun onError(message: String, cause: Throwable? = null)
         fun onBufferProgress(seconds: Float) {}
+        fun onCaptureConfig(width: Int, height: Int, fps: Int) {}
     }
 
     private val ringBuffer = SampleRingBuffer(RING_BUFFER_US)
@@ -97,6 +105,11 @@ class CameraEngine(
     private var pendingSessionStart = false
 
     private var sensorOrientation = 0
+    private var cameraId: String? = null
+    private var videoW = VIDEO_W
+    private var videoH = VIDEO_H
+    private var videoFps = VIDEO_FPS
+    private var videoBitrate = VIDEO_BITRATE
     private var running = false
 
     // ---------------------------------------------------------------------
@@ -115,6 +128,7 @@ class CameraEngine(
         audioStartPts = Long.MIN_VALUE
         try {
             startThreads()
+            selectCaptureConfig()
             setupVideoEncoder()
             setupAudioEncoder()
             openCamera(previewSurface)
@@ -240,11 +254,36 @@ class CameraEngine(
         videoCodecThread?.quitSafely(); videoCodecThread = null; videoCodecHandler = null
     }
 
+    // Reads the back camera's capabilities and picks the largest 16:9 encoder size within the cap,
+    // scaling bitrate to match. Must run BEFORE setupVideoEncoder() (encoder needs the chosen size)
+    // and before openCamera() (which reuses the resolved cameraId). Throws if there's no back camera.
+    private fun selectCaptureConfig() {
+        val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val backId = mgr.cameraIdList.firstOrNull { id ->
+            mgr.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+        } ?: throw IllegalStateException("No back camera")
+        cameraId = backId
+
+        val chars = mgr.getCameraCharacteristics(backId)
+        sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+
+        val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        val best = map?.getOutputSizes(MediaCodec::class.java)
+            ?.filter { it.width <= VIDEO_MAX_W && it.height <= VIDEO_MAX_H && it.width * 9 == it.height * 16 }
+            ?.maxByOrNull { it.width.toLong() * it.height }
+            ?: Size(VIDEO_W, VIDEO_H)
+        videoW = best.width
+        videoH = best.height
+        videoFps = VIDEO_FPS   // ponytail: 30 only — >30 needs a constrained high-speed session (separate effort)
+        videoBitrate = (videoW.toLong() * videoH * videoFps * VIDEO_BITS_PER_PIXEL).toInt().coerceAtLeast(2_000_000)
+        listener.onCaptureConfig(videoW, videoH, videoFps)
+    }
+
     private fun setupVideoEncoder() {
-        val format = MediaFormat.createVideoFormat(VIDEO_MIME, VIDEO_W, VIDEO_H).apply {
+        val format = MediaFormat.createVideoFormat(VIDEO_MIME, videoW, videoH).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-            setInteger(MediaFormat.KEY_BIT_RATE, VIDEO_BITRATE)
-            setInteger(MediaFormat.KEY_FRAME_RATE, VIDEO_FPS)
+            setInteger(MediaFormat.KEY_BIT_RATE, videoBitrate)
+            setInteger(MediaFormat.KEY_FRAME_RATE, videoFps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, VIDEO_GOP_SEC)
         }
         val codec = MediaCodec.createEncoderByType(VIDEO_MIME)
@@ -330,11 +369,7 @@ class CameraEngine(
     @SuppressLint("MissingPermission")
     private fun openCamera(previewSurface: Surface) {
         val mgr = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val backId = mgr.cameraIdList.firstOrNull { id ->
-            mgr.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
-        } ?: throw IllegalStateException("No back camera")
-        sensorOrientation = mgr.getCameraCharacteristics(backId)
-            .get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+        val backId = cameraId ?: throw IllegalStateException("No back camera")
 
         mgr.openCamera(backId, object : CameraDevice.StateCallback() {
             override fun onOpened(device: CameraDevice) {
@@ -363,7 +398,7 @@ class CameraEngine(
                     addTarget(previewSurface)
                     addTarget(encSurface)
                     set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
-                    set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, android.util.Range(VIDEO_FPS, VIDEO_FPS))
+                    set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, android.util.Range(videoFps, videoFps))
                 }
                 s.setRepeatingRequest(req.build(), null, cameraHandler)
             }

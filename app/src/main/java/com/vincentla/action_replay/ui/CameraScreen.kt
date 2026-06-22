@@ -154,6 +154,7 @@ fun CameraScreen() {
     var rewindLabel by remember { mutableStateOf("") }
     var rewindVisible by remember { mutableStateOf(false) }
     var rewindBusy by remember { mutableStateOf(false) }   // true from rewind tap until the preview is over
+    var captureSpec by remember { mutableStateOf("") }     // e.g. "1080p · 30FPS", reported by the engine at start
 
     var scrimTarget by remember { mutableFloatStateOf(0f) }
     val scrimAlpha by animateFloatAsState(
@@ -221,6 +222,9 @@ fun CameraScreen() {
             }
             override fun onBufferProgress(seconds: Float) {
                 mainHandler.post { bufferedSec = seconds }
+            }
+            override fun onCaptureConfig(width: Int, height: Int, fps: Int) {
+                mainHandler.post { captureSpec = "${height}p · ${fps}FPS" }
             }
         })
     }
@@ -340,7 +344,7 @@ fun CameraScreen() {
                     modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 20.dp),
                 )
                 FooterLabel(
-                    text = "720p · 30FPS",
+                    text = captureSpec,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 20.dp),
                 )
             }
