@@ -158,6 +158,10 @@ class CameraEngine(
     fun beginSession() {
         synchronized(sessionLock) {
             if (pendingSessionStart || liveStarted) return
+            // Discard pre-Play footage so rewind only ever sees this session's frames.
+            // ringBuffer has its own lock and the drain thread never holds sessionLock
+            // while touching it, so this sessionLock→ringBuffer order can't deadlock.
+            ringBuffer.clear()
             val outFile = File(context.cacheDir, "session_${System.currentTimeMillis()}.mp4")
             liveMuxerFile = outFile
             liveMuxer = MediaMuxer(outFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)

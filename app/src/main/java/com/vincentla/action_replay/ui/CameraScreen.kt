@@ -304,6 +304,10 @@ fun CameraScreen() {
                 bufferedSec = effectiveBuffer,
                 rewindBusy = rewindBusy,
                 onPlay = {
+                    // Reset BOTH buffer clocks so rewind re-earns its threshold from Play. Without
+                    // zeroing bufferedSec here, its stale pre-clear value lingers until onBufferProgress
+                    // fires and could briefly re-enable the rewind buttons (and flash the fill ring full).
+                    bufferedSec = 0f
                     cameraUptimeSec = 0f      // reset fallback clock so rewind buttons re-earn their threshold
                     engine.beginSession()
                     sessionStartMs = System.currentTimeMillis()

@@ -9,7 +9,7 @@
 - Landscape-locked Android app, back camera.
 - Layout: left **3/4** width = live preview, right **1/4** = vertical column of 4 square buttons.
 - Buttons (top → bottom): **Play**, **Stop**, **Rewind 3s**, **Rewind 5s**.
-- **Rolling buffer runs continuously from app launch** (≥5s of encoded video+audio held in memory).
+- **Rolling buffer runs continuously from app launch** (≥5s of encoded video+audio held in memory). **Cleared on Play (2026-06-22):** rewind is session-scoped — it only ever pulls footage captured after Play, never pre-Play frames. The rewind buttons therefore re-earn their ≥3s/≥5s threshold from the moment Play is pressed.
 - **Play** starts a full-session recording. **Stop** ends it and saves the full Play→Stop span as one MP4.
 - **Rewind 3s / Rewind 5s**: snapshot last 3s/5s from the rolling buffer, save as MP4, then **play it back inline in the preview area**, then return to live camera.
 - Rewind buttons are **disabled until the buffer holds ≥3s / ≥5s**.
