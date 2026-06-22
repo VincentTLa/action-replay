@@ -52,9 +52,10 @@ import kotlinx.coroutines.withContext
 enum class ClipKind(val label: String) { REPLAY("REPLAY"), BATTLE("BATTLE") }
 data class SavedClip(val uri: Uri, val kind: ClipKind)
 
-// Chip on the idle live view that opens the reel. Shown only when there's something to show.
+// Chip on the idle live view that opens the reel. Shows a peek of the last-saved clip's frame
+// next to the count. Shown only when there's something to show.
 @Composable
-fun ReelChip(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ReelChip(latest: SavedClip, count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(3.dp))
@@ -62,9 +63,27 @@ fun ReelChip(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
             .border(1.dp, Cyan, RoundedCornerShape(3.dp))
             .clickable(onClick = onClick)
             .semantics { contentDescription = "Open the reel — $count saved this session"; role = Role.Button }
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        val thumb = rememberThumbnail(latest.uri)
+        Box(
+            modifier = Modifier
+                .height(24.dp)
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(2.dp))
+                .background(BgBottom),
+        ) {
+            if (thumb != null) {
+                Image(
+                    bitmap = thumb,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(2.dp)),
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
         Text(
             text = "REEL · $count",
             color = Cyan,

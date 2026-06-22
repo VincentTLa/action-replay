@@ -15,7 +15,7 @@ internal val XBlue = Color(0xFF0091FF)
 internal val Cyan = Color(0xFF29E0FF)
 internal val StrikeRed = Color(0xFFFF2D2D)
 internal val Volt = Color(0xFFFFE600)
-internal val Steel = Color(0xFF5C6B7E)
+internal val Steel = Color(0xFF7C8A9E)   // muted label grey; lightened from #5C6B7E to clear WCAG AA (~4.5:1) for small text on ink
 internal val Panel = Color(0xFF101A28)
 internal val Divider = Color(0xFF1E2C3E)
 

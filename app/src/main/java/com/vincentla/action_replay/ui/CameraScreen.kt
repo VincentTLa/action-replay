@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.hardware.display.DisplayManager
 import android.media.MediaPlayer
+import android.media.PlaybackParams
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -115,10 +116,13 @@ private fun Context.findActivity(): Activity? {
 }
 
 // Slow-mo inline replay: mute (slowed audio is noise) and play at REWIND_SPEED.
-// setSpeed on a prepared player also starts it, so no separate start() needed.
+// OEM-safe ordering: ensure the player is started first (some media stacks don't auto-start on
+// setSpeed → frozen replay), then apply a *fresh* PlaybackParams. We deliberately do NOT read the
+// getPlaybackParams() getter, which throws IllegalStateException on some OEM firmwares.
 private fun MediaPlayer.playSlow() {
     setVolume(0f, 0f)
-    playbackParams = playbackParams.setSpeed(REWIND_SPEED)
+    if (!isPlaying) start()
+    playbackParams = PlaybackParams().setSpeed(REWIND_SPEED)
 }
 
 @Composable
@@ -430,8 +434,9 @@ fun CameraScreen() {
 
                     // Reel opener: only on the idle live view (not recording/counting/replaying), and only
                     // when there's something to show. Idle-only avoids rewatch audio bleeding into a live mic.
-                    if (!isRecording && countdown == null && displayedUri == null && savedClips.isNotEmpty()) {
+                    if (!reelOpen && !isRecording && countdown == null && displayedUri == null && savedClips.isNotEmpty()) {
                         ReelChip(
+                            latest = savedClips.last(),
                             count = savedClips.size,
                             onClick = { reelOpen = true },
                             modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
@@ -439,10 +444,6 @@ fun CameraScreen() {
                     }
                 }
 
-                FooterLabel(
-                    text = "ACTION REPLAY CAM",
-                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 20.dp),
-                )
                 FooterLabel(
                     text = captureSpec,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 20.dp),
@@ -687,9 +688,9 @@ private fun CircleButton(
             style = TextStyle(
                 fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
-                fontSize = 9.sp,
+                fontSize = 10.sp,
                 letterSpacing = 1.5.sp,
-                lineHeight = 11.sp,
+                lineHeight = 12.sp,
             ),
         )
     }
