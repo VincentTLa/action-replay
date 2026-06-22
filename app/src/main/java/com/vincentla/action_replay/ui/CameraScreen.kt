@@ -403,7 +403,7 @@ private fun ActionReplayPanel(
     onRewindLong: () -> Unit,
 ) {
     Column(
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 16.dp),
+        modifier = modifier.padding(start = 12.dp, end = 22.dp, top = 16.dp, bottom = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
