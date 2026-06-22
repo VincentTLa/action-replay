@@ -89,7 +89,7 @@ fun PermissionScreen(
                 text = "Camera and mic aren't connected yet",
                 color = Cyan,
                 style = TextStyle(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = BattleFont,
                     fontWeight = FontWeight.Black,
                     fontSize = 22.sp,
                     lineHeight = 28.sp,
@@ -159,7 +159,7 @@ private fun StandbyTally() {
             text = "STANDBY",
             color = StrikeRed,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
                 letterSpacing = 3.sp,
@@ -193,7 +193,7 @@ private fun SignalChannel(label: String, ready: Boolean) {
             text = label,
             color = Steel,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp,
                 letterSpacing = 2.sp,
@@ -206,7 +206,7 @@ private fun SignalChannel(label: String, ready: Boolean) {
             text = if (ready) "READY" else "NO SIGNAL",
             color = accent,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
                 letterSpacing = 1.5.sp,
@@ -249,7 +249,7 @@ private fun ActionButton(text: String, onClick: () -> Unit) {
             text = text,
             color = Cyan,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
                 letterSpacing = 1.5.sp,

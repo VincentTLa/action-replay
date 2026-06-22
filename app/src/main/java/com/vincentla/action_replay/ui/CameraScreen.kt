@@ -76,7 +76,6 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -523,9 +522,8 @@ private fun RewindOverlay(visible: Boolean, label: String) {
             text = label,
             style = TextStyle(
                 brush = Brush.linearGradient(listOf(Cyan, XBlue)),
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Black,
-                fontStyle = FontStyle.Italic,   // forward slant = speed
                 fontSize = 96.sp,
                 letterSpacing = 4.sp,
             ),
@@ -545,9 +543,8 @@ private fun CountdownOverlay(label: String) {
         textAlign = TextAlign.Center,
         style = TextStyle(
             color = if (go) Volt else Cyan,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = BattleFont,
             fontWeight = FontWeight.Black,
-            fontStyle = FontStyle.Italic,
             fontSize = if (go) 64.sp else 120.sp,
             letterSpacing = if (go) 4.sp else 0.sp,
         ),
@@ -592,9 +589,8 @@ private fun CircleButton(
             textAlign = TextAlign.Center,
             color = Steel.copy(alpha = if (enabled) 1f else 0.5f),
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
-                fontStyle = FontStyle.Italic,
                 fontSize = 9.sp,
                 letterSpacing = 1.5.sp,
                 lineHeight = 11.sp,
@@ -737,9 +733,8 @@ private fun LivePill(modifier: Modifier = Modifier) {
             text = "BATTLE",
             color = Color.White,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
-                fontStyle = FontStyle.Italic,
                 fontSize = 11.sp,
                 letterSpacing = 1.5.sp,
             ),
@@ -759,12 +754,11 @@ private fun RewindPill(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "▶ REPLAY 0.5×",
+            text = "> REPLAY 0.5x",
             color = Cyan,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
-                fontStyle = FontStyle.Italic,
                 fontSize = 11.sp,
                 letterSpacing = 1.5.sp,
             ),
@@ -789,7 +783,7 @@ private fun Timecode(elapsedMs: Long, modifier: Modifier = Modifier) {
             text = text,
             color = Cyan,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.sp,
                 letterSpacing = 1.sp,
@@ -805,7 +799,7 @@ private fun FooterLabel(text: String, modifier: Modifier = Modifier) {
         modifier = modifier,
         color = Steel,
         style = TextStyle(
-            fontFamily = FontFamily.Monospace,
+            fontFamily = BattleFont,
             fontSize = 10.sp,
             letterSpacing = 2.sp,
         ),
@@ -826,7 +820,7 @@ private fun LiveDotFooter() {
             text = "LIVE",
             color = StrikeRed,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = BattleFont,
                 fontWeight = FontWeight.Bold,
                 fontSize = 10.sp,
                 letterSpacing = 1.5.sp,
