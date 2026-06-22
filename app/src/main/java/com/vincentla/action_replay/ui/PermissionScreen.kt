@@ -31,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -43,17 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// ponytail: mirrors the Beyblade X palette in CameraScreen.kt (those are file-private).
-// If these ever drift, hoist the shared set into one ui/Theme file. A handful of
-// constants isn't worth the cross-file coupling yet.
-private val BgTop = Color(0xFF0A1018)
-private val BgBottom = Color(0xFF05080F)
-private val XBlue = Color(0xFF0091FF)
-private val Cyan = Color(0xFF29E0FF)
-private val StrikeRed = Color(0xFFFF2D2D)
-private val Steel = Color(0xFF5C6B7E)
-private val Panel = Color(0xFF101A28)
-private val Divider = Color(0xFF1E2C3E)
+// Palette lives in Type.kt, shared across screens.
 
 /**
  * Pre-grant "standby card": the deck is patched but its inputs aren't connected.

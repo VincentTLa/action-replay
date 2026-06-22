@@ -54,6 +54,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -93,17 +94,7 @@ import kotlin.math.sin
 // Palette
 // ---------------------------------------------------------------------------
 
-// "Beyblade X" — electric-blue battle deck. Spin, speed, impact. Cyan-on-ink is
-// grounded in the franchise's own brand colors here, not a synthwave default.
-private val BgTop = Color(0xFF0A1018)     // deep ink, faint blue
-private val BgBottom = Color(0xFF05080F)  // near-black ink
-private val XBlue = Color(0xFF0091FF)     // primary energy / spin gauge
-private val Cyan = Color(0xFF29E0FF)      // highlight / launch / spark
-private val StrikeRed = Color(0xFFFF2D2D) // stop / live battle tally
-private val Volt = Color(0xFFFFE600)      // rare impact accent (GO SHOOT!)
-private val Steel = Color(0xFF5C6B7E)     // quiet labels, unlit ticks
-private val Panel = Color(0xFF101A28)     // button/readout fill (bluish)
-private val Divider = Color(0xFF1E2C3E)   // preview border, hairlines
+// Palette ("Beyblade X" — electric blue/cyan on ink) now lives in Type.kt, shared across screens.
 
 private const val BUFFER_POLL_MS = 100L
 private const val TRANSITION_MS = 500          // ease-in/ease-out per leg (dip-in, dip-out)
@@ -170,6 +161,9 @@ fun CameraScreen() {
     var captureSpec by remember { mutableStateOf("") }     // e.g. "1080p · 30FPS", reported by the engine at start
     var countdown by remember { mutableStateOf<String?>(null) }  // "3"/"2"/"1"/"GO SHOOT!" during launch, else null
     var status by remember { mutableStateOf<StatusMsg?>(null) }   // transient branded confirmation/error bug, else null
+    val savedClips = remember { mutableStateListOf<SavedClip>() } // session-scoped reel (in-memory, lost on process death)
+    var reelOpen by remember { mutableStateOf(false) }
+    var slowMo by remember { mutableStateOf(true) }               // inline player speed: 0.5× for rewinds, normal for rewatch
     val scope = rememberCoroutineScope()
 
     var scrimTarget by remember { mutableFloatStateOf(0f) }
@@ -237,7 +231,9 @@ fun CameraScreen() {
             override fun onClipSaved(uri: Uri?, label: String) {
                 mainHandler.post {
                     if (uri != null) {
+                        slowMo = true            // fresh rewind plays back in 0.5× slow-mo
                         requestedUri = uri
+                        savedClips.add(SavedClip(uri, ClipKind.REPLAY))
                         status = StatusMsg("REPLAY SAVED", error = false)
                     } else {
                         rewindBusy = false   // save failed, no preview will play → re-enable rewind
@@ -250,8 +246,12 @@ fun CameraScreen() {
                     isRecording = false
                     // null covers both a real save failure and a deliberate discard (END before the
                     // first keyframe). "NOT SAVED" is honest for both without overclaiming a failure.
-                    status = if (uri != null) StatusMsg("BATTLE SAVED", error = false)
-                    else StatusMsg("BATTLE NOT SAVED", error = true)
+                    if (uri != null) {
+                        savedClips.add(SavedClip(uri, ClipKind.BATTLE))
+                        status = StatusMsg("BATTLE SAVED", error = false)
+                    } else {
+                        status = StatusMsg("BATTLE NOT SAVED", error = true)
+                    }
                 }
             }
             override fun onError(message: String, cause: Throwable?) {
@@ -329,8 +329,8 @@ fun CameraScreen() {
                                     // Guard: a late completion/error from a recycled VideoView must not
                                     // cancel a clip that has since been requested (rapid re-rewind).
                                     setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
-                                    setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) requestedUri = null }; true }
-                                    setOnPreparedListener { mp -> mp.playSlow() }
+                                    setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) { requestedUri = null; status = StatusMsg("CLIP UNAVAILABLE", error = true) } }; true }
+                                    setOnPreparedListener { mp -> if (slowMo) mp.playSlow() else mp.start() }
                                     // ponytail: no MediaController — inline replay auto-plays once and
                                     // returns to live. Transport controls would let the user pause/scrub
                                     // and never fire onCompletion, stranding the rewind-busy lock.
@@ -345,8 +345,8 @@ fun CameraScreen() {
                                     v.setOnErrorListener(null)
                                     v.setOnPreparedListener { mp ->
                                         v.setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
-                                        v.setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) requestedUri = null }; true }
-                                        mp.playSlow()
+                                        v.setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) { requestedUri = null; status = StatusMsg("CLIP UNAVAILABLE", error = true) } }; true }
+                                        if (slowMo) mp.playSlow() else mp.start()
                                     }
                                     v.setVideoURI(uri)
                                 }
@@ -408,7 +408,7 @@ fun CameraScreen() {
                         )
                     }
                     if (displayedUri != null) {
-                        RewindPill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
+                        RewindPill(slowMo = slowMo, modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
                         BackToLiveChip(
                             onClick = { requestedUri = null },
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
@@ -426,6 +426,16 @@ fun CameraScreen() {
                     // is still 0), on the idle live view, and never under a status bug (shares BottomCenter).
                     if (sessionStartMs == 0L && !isRecording && countdown == null && displayedUri == null && status == null) {
                         IdleHint(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp))
+                    }
+
+                    // Reel opener: only on the idle live view (not recording/counting/replaying), and only
+                    // when there's something to show. Idle-only avoids rewatch audio bleeding into a live mic.
+                    if (!isRecording && countdown == null && displayedUri == null && savedClips.isNotEmpty()) {
+                        ReelChip(
+                            count = savedClips.size,
+                            onClick = { reelOpen = true },
+                            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+                        )
                     }
                 }
 
@@ -445,6 +455,7 @@ fun CameraScreen() {
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 isRecording = isRecording,
                 countingDown = countdown != null,
+                playing = requestedUri != null || displayedUri != null,
                 bufferedSec = effectiveBuffer,
                 rewindBusy = rewindBusy,
                 onPlay = {
@@ -497,6 +508,27 @@ fun CameraScreen() {
                 },
             )
         }
+
+        // Reel modal — covers the whole screen (preview + panel). Self-contained; only ever opened
+        // from the idle live view. Rewatch hands off to the existing inline player at normal speed.
+        if (reelOpen) {
+            ReelOverlay(
+                clips = savedClips,
+                onClose = { reelOpen = false },
+                onRewatch = { clip ->
+                    slowMo = false             // saved clips rewatch at normal speed (not 0.5×)
+                    reelOpen = false
+                    requestedUri = clip.uri    // reuse the inline player + its return-to-live transition
+                },
+                onDelete = { clip ->
+                    savedClips.remove(clip)
+                    // Delete the owned MediaStore item off the main thread — allowed on API 29+ with no
+                    // extra permission. If it fails the clip is already gone from the reel (acceptable).
+                    Thread { runCatching { context.contentResolver.delete(clip.uri, null, null) } }.start()
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
@@ -509,6 +541,7 @@ private fun ActionReplayPanel(
     modifier: Modifier,
     isRecording: Boolean,
     countingDown: Boolean,
+    playing: Boolean,          // an inline clip (replay or rewatch) is requested or on screen
     bufferedSec: Float,
     rewindBusy: Boolean,
     onPlay: () -> Unit,
@@ -532,8 +565,10 @@ private fun ActionReplayPanel(
             label = if (live) "END" else "LAUNCH",
             contentDescription = if (live) "End and save the battle" else "Launch — start recording after a countdown",
             // Disabled during the countdown (incl. the "GO SHOOT!" hold, where isRecording is already
-            // true but capture hasn't started) and during an inline replay.
-            enabled = if (live) (!rewindBusy && !countingDown) else !countingDown,
+            // true but capture hasn't started), during an inline replay, and during a reel rewatch,
+            // so you can't launch a battle over a playing clip. `playing` is true from the instant a
+            // clip is requested (not just once it's on screen), closing the dip-in window.
+            enabled = if (live) (!rewindBusy && !countingDown) else (!countingDown && !playing),
             ringColor = if (live) StrikeRed else Cyan,
             onClick = if (live) onStop else onPlay,
         ) { s -> if (live) drawStopIcon(s, StrikeRed) else drawPlayIcon(s, Cyan) }
@@ -807,9 +842,10 @@ private fun LivePill(modifier: Modifier = Modifier) {
     }
 }
 
-// During-replay bug — a dark tag with the X-blue edge and cyan readout.
+// During-playback bug — a dark tag with the X-blue edge and cyan readout. Shows the rewind's
+// 0.5× slow-mo, or a plain "REWATCH" tag when replaying a saved clip from the reel (normal speed).
 @Composable
-private fun RewindPill(modifier: Modifier = Modifier) {
+private fun RewindPill(slowMo: Boolean, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(2.dp))
@@ -819,7 +855,7 @@ private fun RewindPill(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "> REPLAY 0.5x",
+            text = if (slowMo) "> REPLAY 0.5x" else "> REWATCH",
             color = Cyan,
             style = TextStyle(
                 fontFamily = BattleFont,

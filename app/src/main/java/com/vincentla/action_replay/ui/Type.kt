@@ -2,9 +2,22 @@ package com.vincentla.action_replay.ui
 
 import android.content.Context
 import android.provider.Settings
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import com.vincentla.action_replay.R
+
+// "Beyblade X" palette — shared by every screen (was duplicated per-file; hoisted here once a
+// third consumer appeared). Electric blue + cyan on ink, strike-red alarm, rare volt accent.
+internal val BgTop = Color(0xFF0A1018)
+internal val BgBottom = Color(0xFF05080F)
+internal val XBlue = Color(0xFF0091FF)
+internal val Cyan = Color(0xFF29E0FF)
+internal val StrikeRed = Color(0xFFFF2D2D)
+internal val Volt = Color(0xFFFFE600)
+internal val Steel = Color(0xFF5C6B7E)
+internal val Panel = Color(0xFF101A28)
+internal val Divider = Color(0xFF1E2C3E)
 
 // True when the user has turned animations off system-wide (Developer Options / accessibility).
 // Used to drop ambient *looping* motion (spin-gauge orbit, standby pulse) while keeping
