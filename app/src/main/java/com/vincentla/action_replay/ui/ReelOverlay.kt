@@ -277,10 +277,19 @@ private fun DeleteConfirm(onConfirm: () -> Unit, onCancel: () -> Unit, modifier:
 }
 
 @Composable
-private fun PillButton(text: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+// `fill` gives the pill an opaque background (for controls over video, where a transparent pill is
+// hard to see); null keeps it transparent (e.g. on a Panel card). `textColor` defaults to `color`.
+private fun PillButton(
+    text: String,
+    color: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+    fill: androidx.compose.ui.graphics.Color? = null,
+    textColor: androidx.compose.ui.graphics.Color = color,
+) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(3.dp))
+            .then(if (fill != null) Modifier.background(fill) else Modifier)
             .border(1.dp, color, RoundedCornerShape(3.dp))
             .clickable(onClick = onClick)
             .semantics { role = Role.Button }
@@ -288,7 +297,7 @@ private fun PillButton(text: String, color: androidx.compose.ui.graphics.Color, 
     ) {
         Text(
             text = text,
-            color = color,
+            color = textColor,
             style = TextStyle(fontFamily = BattleFont, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.5.sp),
         )
     }
@@ -387,7 +396,7 @@ private fun ScrubberViewer(clip: SavedClip, onBack: () -> Unit) {
                 .pointerInput(Unit) { detectTapGestures { if (player.isPlaying) player.pause() else player.play() } },
         )
         Box(modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
-            PillButton(text = "< REEL", color = Cyan, onClick = onBack)
+            PillButton(text = "< REEL", color = Cyan, fill = Panel, onClick = onBack)
         }
         Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(16.dp)) {
             Slider(
@@ -398,13 +407,14 @@ private fun ScrubberViewer(clip: SavedClip, onBack: () -> Unit) {
                 colors = SliderDefaults.colors(thumbColor = Cyan, activeTrackColor = Cyan, inactiveTrackColor = Steel),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PillButton(text = "-1F", color = Cyan, onClick = { stepBy(-frameMs) })
+                PillButton(text = "-1F", color = Cyan, fill = Panel, onClick = { stepBy(-frameMs) })
                 Spacer(Modifier.width(10.dp))
-                PillButton(text = if (isPlaying) "PAUSE" else "PLAY", color = Cyan, onClick = {
+                // Primary transport — the one bold, solid-accent control.
+                PillButton(text = if (isPlaying) "PAUSE" else "PLAY", color = Cyan, fill = Cyan, textColor = BgBottom, onClick = {
                     if (player.isPlaying) player.pause() else player.play()
                 })
                 Spacer(Modifier.width(10.dp))
-                PillButton(text = "+1F", color = Cyan, onClick = { stepBy(frameMs) })
+                PillButton(text = "+1F", color = Cyan, fill = Panel, onClick = { stepBy(frameMs) })
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = "${tenths(positionMs)} / ${tenths(durationMs)}",
