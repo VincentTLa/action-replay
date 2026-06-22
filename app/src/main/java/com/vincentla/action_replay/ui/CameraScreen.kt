@@ -1,5 +1,6 @@
 package com.vincentla.action_replay.ui
 
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -84,6 +85,14 @@ private val Divider = Color(0xFF1F2A44)
 private const val BUFFER_POLL_MS = 100L
 private const val TRANSITION_MS = 500          // ease-in/ease-out per leg (dip-in, dip-out)
 private const val SETTLE_MS = 120L             // ponytail: fixed settle for VideoView (SurfaceView) to swap under cover; bump if first frame flashes black on slow devices
+private const val REWIND_SPEED = 0.5f          // inline replay speed; saved file stays normal-speed
+
+// Slow-mo inline replay: mute (slowed audio is noise) and play at REWIND_SPEED.
+// setSpeed on a prepared player also starts it, so no separate start() needed.
+private fun MediaPlayer.playSlow() {
+    setVolume(0f, 0f)
+    playbackParams = playbackParams.setSpeed(REWIND_SPEED)
+}
 
 @Composable
 fun CameraScreen() {
@@ -223,7 +232,7 @@ fun CameraScreen() {
                                     // cancel a clip that has since been requested (rapid re-rewind).
                                     setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
                                     setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) requestedUri = null }; true }
-                                    setOnPreparedListener { mp -> mp.start() }
+                                    setOnPreparedListener { mp -> mp.playSlow() }
                                     // ponytail: no MediaController — inline replay auto-plays once and
                                     // returns to live. Transport controls would let the user pause/scrub
                                     // and never fire onCompletion, stranding the rewind-busy lock.
@@ -239,7 +248,7 @@ fun CameraScreen() {
                                     v.setOnPreparedListener { mp ->
                                         v.setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
                                         v.setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) requestedUri = null }; true }
-                                        mp.start()
+                                        mp.playSlow()
                                     }
                                     v.setVideoURI(uri)
                                 }
@@ -549,7 +558,7 @@ private fun RewindPill(modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "REWIND",
+            text = "REWIND 0.5x",
             color = Color.White,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
