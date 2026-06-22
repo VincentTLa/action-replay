@@ -167,7 +167,6 @@ fun CameraScreen() {
     var status by remember { mutableStateOf<StatusMsg?>(null) }   // transient branded confirmation/error bug, else null
     val savedClips = remember { mutableStateListOf<SavedClip>() } // session-scoped reel (in-memory, lost on process death)
     var reelOpen by remember { mutableStateOf(false) }
-    var slowMo by remember { mutableStateOf(true) }               // inline player speed: 0.5× for rewinds, normal for rewatch
     val scope = rememberCoroutineScope()
 
     var scrimTarget by remember { mutableFloatStateOf(0f) }
@@ -235,7 +234,6 @@ fun CameraScreen() {
             override fun onClipSaved(uri: Uri?, label: String) {
                 mainHandler.post {
                     if (uri != null) {
-                        slowMo = true            // fresh rewind plays back in 0.5× slow-mo
                         requestedUri = uri
                         savedClips.add(SavedClip(uri, ClipKind.REPLAY))
                         status = StatusMsg("REPLAY SAVED", error = false)
@@ -273,7 +271,20 @@ fun CameraScreen() {
         })
     }
 
-    DisposableEffect(Unit) { onDispose { engine.stop() } }
+    // Shared exit path for both teardown triggers — surface destroyed on background, and composition
+    // disposed on recreation (e.g. a config change). Save any in-progress battle (no-op if none),
+    // tear the engine down, and drop any inline playback so we return to a clean live view instead of
+    // a stuck busy-lock. ponytail: a process kill (swipe from recents) runs NEITHER path, so that
+    // battle is lost — surviving a kill needs a camera foreground service (deliberately out of scope).
+    val saveAndTeardown = {
+        engine.endSession()
+        engine.stop()
+        rewindBusy = false
+        requestedUri = null
+        displayedUri = null
+    }
+
+    DisposableEffect(Unit) { onDispose { saveAndTeardown() } }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -316,7 +327,10 @@ fun CameraScreen() {
                                         engine.start(holder.surface)
                                     }
                                     override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, hgt: Int) {}
-                                    override fun surfaceDestroyed(holder: SurfaceHolder) { engine.stop() }
+                                    // Save-on-background: finalize + publish an in-progress battle (and
+                                    // drop any inline playback) instead of letting stop() discard it.
+                                    // Same path as composition disposal — see saveAndTeardown.
+                                    override fun surfaceDestroyed(holder: SurfaceHolder) { saveAndTeardown() }
                                 })
                             }
                         },
@@ -334,7 +348,7 @@ fun CameraScreen() {
                                     // cancel a clip that has since been requested (rapid re-rewind).
                                     setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
                                     setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) { requestedUri = null; status = StatusMsg("CLIP UNAVAILABLE", error = true) } }; true }
-                                    setOnPreparedListener { mp -> if (slowMo) mp.playSlow() else mp.start() }
+                                    setOnPreparedListener { mp -> mp.playSlow() }
                                     // ponytail: no MediaController — inline replay auto-plays once and
                                     // returns to live. Transport controls would let the user pause/scrub
                                     // and never fire onCompletion, stranding the rewind-busy lock.
@@ -350,7 +364,7 @@ fun CameraScreen() {
                                     v.setOnPreparedListener { mp ->
                                         v.setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
                                         v.setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) { requestedUri = null; status = StatusMsg("CLIP UNAVAILABLE", error = true) } }; true }
-                                        if (slowMo) mp.playSlow() else mp.start()
+                                        mp.playSlow()
                                     }
                                     v.setVideoURI(uri)
                                 }
@@ -412,7 +426,7 @@ fun CameraScreen() {
                         )
                     }
                     if (displayedUri != null) {
-                        RewindPill(slowMo = slowMo, modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
+                        RewindPill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
                         BackToLiveChip(
                             onClick = { requestedUri = null },
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
@@ -456,7 +470,6 @@ fun CameraScreen() {
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 isRecording = isRecording,
                 countingDown = countdown != null,
-                playing = requestedUri != null || displayedUri != null,
                 bufferedSec = effectiveBuffer,
                 rewindBusy = rewindBusy,
                 onPlay = {
@@ -516,11 +529,6 @@ fun CameraScreen() {
             ReelOverlay(
                 clips = savedClips,
                 onClose = { reelOpen = false },
-                onRewatch = { clip ->
-                    slowMo = false             // saved clips rewatch at normal speed (not 0.5×)
-                    reelOpen = false
-                    requestedUri = clip.uri    // reuse the inline player + its return-to-live transition
-                },
                 onDelete = { clip ->
                     savedClips.remove(clip)
                     // Delete the owned MediaStore item off the main thread — allowed on API 29+ with no
@@ -542,7 +550,6 @@ private fun ActionReplayPanel(
     modifier: Modifier,
     isRecording: Boolean,
     countingDown: Boolean,
-    playing: Boolean,          // an inline clip (replay or rewatch) is requested or on screen
     bufferedSec: Float,
     rewindBusy: Boolean,
     onPlay: () -> Unit,
@@ -565,11 +572,10 @@ private fun ActionReplayPanel(
         CircleButton(
             label = if (live) "END" else "LAUNCH",
             contentDescription = if (live) "End and save the battle" else "Launch — start recording after a countdown",
-            // Disabled during the countdown (incl. the "GO SHOOT!" hold, where isRecording is already
-            // true but capture hasn't started), during an inline replay, and during a reel rewatch,
-            // so you can't launch a battle over a playing clip. `playing` is true from the instant a
-            // clip is requested (not just once it's on screen), closing the dip-in window.
-            enabled = if (live) (!rewindBusy && !countingDown) else (!countingDown && !playing),
+            // END disabled during the countdown ("GO SHOOT!" hold) and during an inline replay
+            // (so a reflex tap can't cut the battle short); LAUNCH disabled during the countdown.
+            // (Reel rewatch runs in its own full-screen modal, so it can't reach these buttons.)
+            enabled = if (live) (!rewindBusy && !countingDown) else !countingDown,
             ringColor = if (live) StrikeRed else Cyan,
             onClick = if (live) onStop else onPlay,
         ) { s -> if (live) drawStopIcon(s, StrikeRed) else drawPlayIcon(s, Cyan) }
@@ -843,10 +849,10 @@ private fun LivePill(modifier: Modifier = Modifier) {
     }
 }
 
-// During-playback bug — a dark tag with the X-blue edge and cyan readout. Shows the rewind's
-// 0.5× slow-mo, or a plain "REWATCH" tag when replaying a saved clip from the reel (normal speed).
+// During-replay bug — a dark tag with the X-blue edge and cyan readout. The inline player is the
+// 0.5× auto-rewind only; reel rewatch has its own ExoPlayer viewer.
 @Composable
-private fun RewindPill(slowMo: Boolean, modifier: Modifier = Modifier) {
+private fun RewindPill(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(2.dp))
@@ -856,7 +862,7 @@ private fun RewindPill(slowMo: Boolean, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = if (slowMo) "> REPLAY 0.5x" else "> REWATCH",
+            text = "> REPLAY 0.5x",
             color = Cyan,
             style = TextStyle(
                 fontFamily = BattleFont,
