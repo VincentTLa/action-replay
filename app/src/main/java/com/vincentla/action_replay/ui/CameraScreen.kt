@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import android.widget.MediaController
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
@@ -100,6 +99,7 @@ fun CameraScreen() {
     var nowMs by remember { mutableLongStateOf(0L) }
     var rewindLabel by remember { mutableStateOf("") }
     var rewindVisible by remember { mutableStateOf(false) }
+    var rewindBusy by remember { mutableStateOf(false) }   // true from rewind tap until the preview is over
 
     var scrimTarget by remember { mutableFloatStateOf(0f) }
     val scrimAlpha by animateFloatAsState(
@@ -128,6 +128,7 @@ fun CameraScreen() {
         displayedUri = requestedUri         // swap mounted clip under cover (mount or unmount)
         delay(SETTLE_MS)                    // let VideoView surface settle / show first frame
         scrimTarget = 0f                    // reveal the new scene
+        if (displayedUri == null) rewindBusy = false   // preview over, back to live → re-enable rewind
     }
 
     val engine = remember {
@@ -138,6 +139,7 @@ fun CameraScreen() {
                         requestedUri = uri
                         Toast.makeText(context, "Saved $label", Toast.LENGTH_SHORT).show()
                     } else {
+                        rewindBusy = false   // save failed, no preview will play → re-enable rewind
                         Toast.makeText(context, "Clip save failed", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -150,7 +152,10 @@ fun CameraScreen() {
                 }
             }
             override fun onError(message: String, cause: Throwable?) {
-                mainHandler.post { Toast.makeText(context, message, Toast.LENGTH_LONG).show() }
+                mainHandler.post {
+                    rewindBusy = false   // engine error path (e.g. rewindAndSave threw) must re-enable rewind
+                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                }
             }
             override fun onBufferProgress(seconds: Float) {
                 mainHandler.post { bufferedSec = seconds }
@@ -219,7 +224,9 @@ fun CameraScreen() {
                                     setOnCompletionListener { mainHandler.post { if (requestedUri == uri) requestedUri = null } }
                                     setOnErrorListener { _, _, _ -> mainHandler.post { if (requestedUri == uri) requestedUri = null }; true }
                                     setOnPreparedListener { mp -> mp.start() }
-                                    setMediaController(MediaController(ctx).also { it.setAnchorView(this) })
+                                    // ponytail: no MediaController — inline replay auto-plays once and
+                                    // returns to live. Transport controls would let the user pause/scrub
+                                    // and never fire onCompletion, stranding the rewind-busy lock.
                                     setVideoURI(uri)
                                     start()
                                 }
@@ -280,6 +287,7 @@ fun CameraScreen() {
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 isRecording = isRecording,
                 bufferedSec = effectiveBuffer,
+                rewindBusy = rewindBusy,
                 onPlay = {
                     cameraUptimeSec = 0f      // reset fallback clock so rewind buttons re-earn their threshold
                     engine.beginSession()
@@ -288,11 +296,13 @@ fun CameraScreen() {
                 },
                 onStop = { engine.endSession() },
                 onRewind3 = {
+                    rewindBusy = true
                     rewindLabel = "-3s"
                     rewindVisible = true
                     engine.rewindAndSave(3)
                 },
                 onRewind5 = {
+                    rewindBusy = true
                     rewindLabel = "-5s"
                     rewindVisible = true
                     engine.rewindAndSave(5)
@@ -314,6 +324,7 @@ private fun ActionReplayPanel(
     modifier: Modifier,
     isRecording: Boolean,
     bufferedSec: Float,
+    rewindBusy: Boolean,
     onPlay: () -> Unit,
     onStop: () -> Unit,
     onRewind3: () -> Unit,
@@ -342,14 +353,14 @@ private fun ActionReplayPanel(
 
         CircleButton(
             label = "REWIND\n3 SEC",
-            enabled = isRecording && bufferedSec >= 3f,
+            enabled = isRecording && !rewindBusy && bufferedSec >= 3f,
             ringColor = Purple,
             onClick = onRewind3,
         ) { drawRewindIcon(it, Purple) }
 
         CircleButton(
             label = "REWIND\n5 SEC",
-            enabled = isRecording && bufferedSec >= 5f,
+            enabled = isRecording && !rewindBusy && bufferedSec >= 5f,
             ringColor = Purple,
             onClick = onRewind5,
         ) { drawRewindIcon(it, Purple) }
