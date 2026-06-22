@@ -50,7 +50,7 @@ private const val AUDIO_SAMPLE_RATE = 44_100
 private const val AUDIO_BITRATE = 128_000
 private const val AUDIO_CHANNEL_COUNT = 1
 
-private const val RING_BUFFER_SEC = 8L
+private const val RING_BUFFER_SEC = 13L   // ≥ longest rewind (10s) + ~3s GOP/keyframe headroom
 private const val RING_BUFFER_US = RING_BUFFER_SEC * 1_000_000L
 
 /**

@@ -8,11 +8,11 @@
 ## Product spec (locked in 2026-06-19 conversation)
 - Landscape Android app, back camera. **`sensorLandscape` (2026-06-22):** rotates between both landscape orientations (180° flip) following the physical sensor, even with system auto-rotate off. Portrait is never used. Orientation is **locked to the current landscape while recording** (Play→Stop) so a mid-record flip can't produce a half-upside-down clip (MediaMuxer's orientation hint is fixed at file creation). Preview is counter-rotated 180° in reverse-landscape; saved-file `orientationHint` is computed from live display rotation.
 - Layout: left **3/4** width = live preview, right **1/4** = vertical column of 4 square buttons.
-- Buttons (top → bottom): **Play**, **Stop**, **Rewind 3s**, **Rewind 5s**.
+- Buttons (top → bottom): **Play**, **Stop**, **Rewind 5s**, **Rewind 10s**.
 - **Rolling buffer runs continuously from app launch** (≥5s of encoded video+audio held in memory). **Cleared on Play (2026-06-22):** rewind is session-scoped — it only ever pulls footage captured after Play, never pre-Play frames. The rewind buttons therefore re-earn their ≥3s/≥5s threshold from the moment Play is pressed.
 - **Play** starts a full-session recording. **Stop** ends it and saves the full Play→Stop span as one MP4.
-- **Rewind 3s / Rewind 5s**: snapshot last 3s/5s from the rolling buffer, save as MP4, then **play it back inline in the preview area**, then return to live camera.
-- Rewind buttons are **disabled until the buffer holds ≥3s / ≥5s**.
+- **Rewind 5s / Rewind 10s**: snapshot last 5s/10s from the rolling buffer, save as MP4, then **play it back inline in the preview area**, then return to live camera. (Durations bumped from 3s/5s on 2026-06-22.)
+- Rewind buttons are **disabled until the buffer holds ≥5s / ≥10s**.
 - Audio is captured with video.
 - Output goes to the **shared gallery** via MediaStore under `Movies/ActionReplay/`.
 
@@ -33,7 +33,7 @@
 ## Known simplifications / `ponytail:` markers
 - No foreground service: backgrounding the app stops capture. Add a `MediaProjection`-style foreground service later if "must keep recording while user switches apps" becomes a requirement.
 - **Resolution is device-best (2026-06-22):** `selectCaptureConfig()` picks the largest 16:9 encoder size the back camera supports, **capped at 1920×1080** (4K skipped for encoder/rolling-buffer load), and scales bitrate via `VIDEO_BITS_PER_PIXEL` (≈5 Mbps at 720p30). **FPS stays 30** — >30 needs a constrained high-speed capture session (not implemented). The chosen `{height}p · {fps}FPS` is reported to the UI via `Listener.onCaptureConfig` and shown in the footer. GOP=1s, H.264, AAC 128 kbps. The `VIDEO_W/H/FPS/BITRATE` consts are now fallbacks.
-- Ring buffer holds 8s of headroom (over the 5s spec) so the rewind-5s extraction can always anchor on a prior keyframe.
+- Ring buffer holds 13s (over the 10s max rewind) so the rewind-10s extraction can always anchor on a prior keyframe.
 - Inline playback uses `VideoView` rather than Media3/ExoPlayer to avoid pulling in a large dep tree.
 
 ## Code-generation workflow (mandatory)

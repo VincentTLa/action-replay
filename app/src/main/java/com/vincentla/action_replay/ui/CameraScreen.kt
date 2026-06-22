@@ -236,7 +236,7 @@ fun CameraScreen() {
             bufferedSec = engine.bufferedSeconds()
             // ponytail: fallback timer so emulators with starved encoder surfaces still
             // enable rewind buttons; on real devices bufferedSec from encoder wins.
-            cameraUptimeSec = (cameraUptimeSec + BUFFER_POLL_MS / 1000f).coerceAtMost(8f)
+            cameraUptimeSec = (cameraUptimeSec + BUFFER_POLL_MS / 1000f).coerceAtMost(13f)
             nowMs = System.currentTimeMillis()
             delay(BUFFER_POLL_MS)
         }
@@ -370,17 +370,17 @@ fun CameraScreen() {
                     isRecording = true
                 },
                 onStop = { engine.endSession() },
-                onRewind3 = {
-                    rewindBusy = true
-                    rewindLabel = "-3s"
-                    rewindVisible = true
-                    engine.rewindAndSave(3)
-                },
-                onRewind5 = {
+                onRewindShort = {
                     rewindBusy = true
                     rewindLabel = "-5s"
                     rewindVisible = true
                     engine.rewindAndSave(5)
+                },
+                onRewindLong = {
+                    rewindBusy = true
+                    rewindLabel = "-10s"
+                    rewindVisible = true
+                    engine.rewindAndSave(10)
                 },
             )
         }
@@ -399,8 +399,8 @@ private fun ActionReplayPanel(
     rewindBusy: Boolean,
     onPlay: () -> Unit,
     onStop: () -> Unit,
-    onRewind3: () -> Unit,
-    onRewind5: () -> Unit,
+    onRewindShort: () -> Unit,
+    onRewindLong: () -> Unit,
 ) {
     Column(
         modifier = modifier.padding(horizontal = 12.dp, vertical = 16.dp),
@@ -426,21 +426,21 @@ private fun ActionReplayPanel(
         ) { drawStopIcon(it, RedLive) }
 
         CircleButton(
-            label = "REWIND\n3 SEC",
-            contentDescription = "Rewind and replay the last 3 seconds",
-            enabled = isRecording && !rewindBusy && bufferedSec >= 3f,
-            progress = if (isRecording) (bufferedSec / 3f).coerceIn(0f, 1f) else 1f,
-            ringColor = Purple,
-            onClick = onRewind3,
-        ) { drawRewindIcon(it, Purple) }
-
-        CircleButton(
             label = "REWIND\n5 SEC",
             contentDescription = "Rewind and replay the last 5 seconds",
             enabled = isRecording && !rewindBusy && bufferedSec >= 5f,
             progress = if (isRecording) (bufferedSec / 5f).coerceIn(0f, 1f) else 1f,
             ringColor = Purple,
-            onClick = onRewind5,
+            onClick = onRewindShort,
+        ) { drawRewindIcon(it, Purple) }
+
+        CircleButton(
+            label = "REWIND\n10 SEC",
+            contentDescription = "Rewind and replay the last 10 seconds",
+            enabled = isRecording && !rewindBusy && bufferedSec >= 10f,
+            progress = if (isRecording) (bufferedSec / 10f).coerceIn(0f, 1f) else 1f,
+            ringColor = Purple,
+            onClick = onRewindLong,
         ) { drawRewindIcon(it, Purple) }
 
         Spacer(Modifier.weight(1f))
