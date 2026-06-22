@@ -25,12 +25,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -137,15 +139,18 @@ fun PermissionScreen(
 
 @Composable
 private fun StandbyTally() {
-    // Slow ambient pulse — a deck on standby. Single low-amplitude opacity cycle,
-    // not a flash; left running under reduced-motion (gentle, non-vestibular).
+    // Slow ambient pulse — a deck on standby. Held static (full opacity) when the user has
+    // animations disabled; otherwise a single low-amplitude opacity cycle (not a flash).
+    val context = LocalContext.current
+    val reduced = remember { isReducedMotion(context) }   // read once, not per recomposition
     val transition = rememberInfiniteTransition(label = "standby")
-    val dotAlpha by transition.animateFloat(
+    val animatedAlpha by transition.animateFloat(
         initialValue = 0.35f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Reverse),
         label = "tally",
     )
+    val dotAlpha = if (reduced) 1f else animatedAlpha
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier

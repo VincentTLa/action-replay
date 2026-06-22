@@ -1,8 +1,16 @@
 package com.vincentla.action_replay.ui
 
+import android.content.Context
+import android.provider.Settings
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import com.vincentla.action_replay.R
+
+// True when the user has turned animations off system-wide (Developer Options / accessibility).
+// Used to drop ambient *looping* motion (spin-gauge orbit, standby pulse) while keeping
+// functional one-shot transitions. Read once at composition; the setting changes rarely.
+internal fun isReducedMotion(context: Context): Boolean =
+    Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
 
 // VT323 — pixel/terminal display face (SIL OFL). Reads as a battle-computer readout, which
 // suits the "3, 2, 1, GO SHOOT" countdown and the HUD. Single weight (regular), no italic —

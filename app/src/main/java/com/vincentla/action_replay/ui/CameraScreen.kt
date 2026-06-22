@@ -12,7 +12,6 @@ import android.os.Looper
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
-import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOut
@@ -45,6 +44,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -77,7 +77,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -170,6 +169,7 @@ fun CameraScreen() {
     var rewindBusy by remember { mutableStateOf(false) }   // true from rewind tap until the preview is over
     var captureSpec by remember { mutableStateOf("") }     // e.g. "1080p · 30FPS", reported by the engine at start
     var countdown by remember { mutableStateOf<String?>(null) }  // "3"/"2"/"1"/"GO SHOOT!" during launch, else null
+    var status by remember { mutableStateOf<StatusMsg?>(null) }   // transient branded confirmation/error bug, else null
     val scope = rememberCoroutineScope()
 
     var scrimTarget by remember { mutableFloatStateOf(0f) }
@@ -183,6 +183,14 @@ fun CameraScreen() {
         if (rewindVisible) {
             delay(700)
             rewindVisible = false
+        }
+    }
+
+    // Auto-dismiss the status bug. A new message re-keys this effect, cancelling the old timer.
+    LaunchedEffect(status) {
+        if (status != null) {
+            delay(1600)
+            status = null
         }
     }
 
@@ -230,24 +238,26 @@ fun CameraScreen() {
                 mainHandler.post {
                     if (uri != null) {
                         requestedUri = uri
-                        Toast.makeText(context, "Saved $label", Toast.LENGTH_SHORT).show()
+                        status = StatusMsg("REPLAY SAVED", error = false)
                     } else {
                         rewindBusy = false   // save failed, no preview will play → re-enable rewind
-                        Toast.makeText(context, "Clip save failed", Toast.LENGTH_SHORT).show()
+                        status = StatusMsg("COULDN'T SAVE REPLAY", error = true)
                     }
                 }
             }
             override fun onSessionSaved(uri: Uri?) {
                 mainHandler.post {
                     isRecording = false
-                    val msg = if (uri != null) "Battle saved" else "Couldn't save the battle"
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    // null covers both a real save failure and a deliberate discard (END before the
+                    // first keyframe). "NOT SAVED" is honest for both without overclaiming a failure.
+                    status = if (uri != null) StatusMsg("BATTLE SAVED", error = false)
+                    else StatusMsg("BATTLE NOT SAVED", error = true)
                 }
             }
             override fun onError(message: String, cause: Throwable?) {
                 mainHandler.post {
                     rewindBusy = false   // engine error path (e.g. rewindAndSave threw) must re-enable rewind
-                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    status = StatusMsg(message.uppercase(java.util.Locale.ROOT), error = true)
                 }
             }
             override fun onBufferProgress(seconds: Float) {
@@ -403,6 +413,19 @@ fun CameraScreen() {
                             onClick = { requestedUri = null },
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
                         )
+                    }
+
+                    // Branded save/error confirmation — replaces system Toasts (cohesive type, more
+                    // visible, and never leaks internal labels like the old "Saved rewind5s").
+                    // Bottom-center keeps it clear of the top-corner HUD (tally/timecode/replay bug).
+                    status?.let {
+                        StatusBug(it, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp))
+                    }
+
+                    // First-run nudge: only before the very first launch this session (sessionStartMs
+                    // is still 0), on the idle live view, and never under a status bug (shares BottomCenter).
+                    if (sessionStartMs == 0L && !isRecording && countdown == null && displayedUri == null && status == null) {
+                        IdleHint(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp))
                     }
                 }
 
@@ -647,6 +670,8 @@ private fun CircleButton(
 
 @Composable
 private fun SpinGauge(progress: Float, color: Color, enabled: Boolean) {
+    val context = LocalContext.current
+    val reduced = remember { isReducedMotion(context) }   // read once, not per recomposition
     val spin = rememberInfiniteTransition(label = "spin")
     val spinAngle by spin.animateFloat(
         initialValue = 0f,
@@ -678,9 +703,11 @@ private fun SpinGauge(progress: Float, color: Color, enabled: Boolean) {
             )
         }
         if (enabled) {
-            drawArc(    // orbiting spark over the rim — reads spinAngle in the draw phase (no recomposition)
+            // Orbiting spark when ready (reads spinAngle in the draw phase, no recomposition).
+            // Under reduced motion, pin it to the top so "ready" still has a distinct mark, no spin.
+            drawArc(
                 color = Cyan,
-                startAngle = spinAngle,
+                startAngle = if (reduced) -90f else spinAngle,
                 sweepAngle = 42f,
                 useCenter = false,
                 topLeft = androidx.compose.ui.geometry.Offset(cx - outerR, cy - outerR),
@@ -833,6 +860,54 @@ private fun BackToLiveChip(onClick: () -> Unit, modifier: Modifier = Modifier) {
             ),
         )
     }
+}
+
+// Transient branded status bug (save confirmation / error) — replaces system Toasts.
+private data class StatusMsg(val text: String, val error: Boolean)
+
+@Composable
+private fun StatusBug(msg: StatusMsg, modifier: Modifier = Modifier) {
+    val accent = if (msg.error) StrikeRed else Cyan
+    Row(
+        modifier = modifier
+            .widthIn(max = 300.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(Panel)
+            .border(1.dp, accent, RoundedCornerShape(3.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(6.dp).clip(CircleShape).background(accent),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = msg.text,
+            color = accent,
+            style = TextStyle(
+                fontFamily = BattleFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                letterSpacing = 1.sp,
+            ),
+        )
+    }
+}
+
+// First-run nudge shown on the idle live view before the first launch.
+@Composable
+private fun IdleHint(modifier: Modifier = Modifier) {
+    Text(
+        text = "TAP LAUNCH TO START",
+        modifier = modifier,
+        color = Cyan.copy(alpha = 0.8f),
+        style = TextStyle(
+            fontFamily = BattleFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            letterSpacing = 2.sp,
+        ),
+    )
 }
 
 @Composable
