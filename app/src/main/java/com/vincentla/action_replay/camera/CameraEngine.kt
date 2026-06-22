@@ -171,9 +171,14 @@ class CameraEngine(
         if (sessionWasActive) listener.onSessionSaved(null)
     }
 
-    fun beginSession() {
+    /** @return true if a new session was started; false if the engine is stopped or one is already active. */
+    fun beginSession(): Boolean {
         synchronized(sessionLock) {
-            if (pendingSessionStart || liveStarted) return
+            // Engine stopped (e.g. app backgrounded mid launch-countdown → surfaceDestroyed → stop()).
+            // Without this, a deferred beginSession() would build a muxer on a dead engine with stale
+            // track formats and never receive samples.
+            if (!running) return false
+            if (pendingSessionStart || liveStarted) return false
             // Discard pre-Play footage so rewind only ever sees this session's frames.
             // ringBuffer has its own lock and the drain thread never holds sessionLock
             // while touching it, so this sessionLock→ringBuffer order can't deadlock.
@@ -190,6 +195,7 @@ class CameraEngine(
         }
         requestKeyframe()
         maybeStartLiveMuxer()
+        return true
     }
 
     fun endSession() {

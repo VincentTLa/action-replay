@@ -16,7 +16,12 @@ import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseInOut
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -71,12 +76,15 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.rememberCoroutineScope
 import com.vincentla.action_replay.camera.CameraEngine
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -85,16 +93,17 @@ import kotlin.math.sin
 // Palette
 // ---------------------------------------------------------------------------
 
-// "LSM Deck" — broadcast slow-mo replay operator's deck. Gunmetal slate,
-// phosphor-amber readouts, tally-red on-air. No cyan, no purple.
-private val BgTop = Color(0xFF1A1D23)    // gunmetal top
-private val BgBottom = Color(0xFF0E1013) // gunmetal bottom (not pure black)
-private val Amber = Color(0xFFFFB000)    // phosphor readouts, play, dial fill
-private val AmberDim = Color(0xFFB37A00) // dim amber for borders/unlit
-private val TallyRed = Color(0xFFFF3B30) // REC / stop / live tally
-private val Steel = Color(0xFF5B6470)    // quiet labels, dividers, unlit ticks
-private val Panel = Color(0xFF1C2026)    // button/readout fill
-private val Divider = Color(0xFF2A2F38)  // preview border, hairlines
+// "Beyblade X" — electric-blue battle deck. Spin, speed, impact. Cyan-on-ink is
+// grounded in the franchise's own brand colors here, not a synthwave default.
+private val BgTop = Color(0xFF0A1018)     // deep ink, faint blue
+private val BgBottom = Color(0xFF05080F)  // near-black ink
+private val XBlue = Color(0xFF0091FF)     // primary energy / spin gauge
+private val Cyan = Color(0xFF29E0FF)      // highlight / launch / spark
+private val StrikeRed = Color(0xFFFF2D2D) // stop / live battle tally
+private val Volt = Color(0xFFFFE600)      // rare impact accent (GO SHOOT!)
+private val Steel = Color(0xFF5C6B7E)     // quiet labels, unlit ticks
+private val Panel = Color(0xFF101A28)     // button/readout fill (bluish)
+private val Divider = Color(0xFF1E2C3E)   // preview border, hairlines
 
 private const val BUFFER_POLL_MS = 100L
 private const val TRANSITION_MS = 500          // ease-in/ease-out per leg (dip-in, dip-out)
@@ -156,6 +165,8 @@ fun CameraScreen() {
     var rewindVisible by remember { mutableStateOf(false) }
     var rewindBusy by remember { mutableStateOf(false) }   // true from rewind tap until the preview is over
     var captureSpec by remember { mutableStateOf("") }     // e.g. "1080p · 30FPS", reported by the engine at start
+    var countdown by remember { mutableStateOf<String?>(null) }  // "3"/"2"/"1"/"GO SHOOT!" during launch, else null
+    val scope = rememberCoroutineScope()
 
     var scrimTarget by remember { mutableFloatStateOf(0f) }
     val scrimAlpha by animateFloatAsState(
@@ -315,17 +326,36 @@ fun CameraScreen() {
                         )
                     }
 
-                    // Dip-to-black scrim — drawn above the VideoView's overlay surface.
+                    // X-slash wipe — replaces the dip-to-black. The electric-blue fill at full
+                    // alpha still fully covers the SurfaceView swap at peak (same cover guarantee
+                    // as before); the white/cyan X grows from center as the scene flips, giving
+                    // the franchise's logo gesture as the transition. Drawn above the VideoView's
+                    // media-overlay surface.
                     if (scrimAlpha > 0f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .alpha(scrimAlpha)
-                                .background(Color.Black),
-                        )
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val t = scrimAlpha
+                            drawRect(color = XBlue, alpha = t)   // full cover at peak hides the swap
+                            val hw = size.width / 2f
+                            val hh = size.height / 2f
+                            val sw = 9.dp.toPx()
+                            drawLine(
+                                color = Color.White,
+                                start = androidx.compose.ui.geometry.Offset(hw - hw * t, hh - hh * t),
+                                end = androidx.compose.ui.geometry.Offset(hw + hw * t, hh + hh * t),
+                                strokeWidth = sw, cap = StrokeCap.Round, alpha = t,
+                            )
+                            drawLine(
+                                color = Cyan,
+                                start = androidx.compose.ui.geometry.Offset(hw - hw * t, hh + hh * t),
+                                end = androidx.compose.ui.geometry.Offset(hw + hw * t, hh - hh * t),
+                                strokeWidth = sw, cap = StrokeCap.Round, alpha = t,
+                            )
+                        }
                     }
 
                     RewindOverlay(visible = rewindVisible, label = rewindLabel)
+
+                    countdown?.let { CountdownOverlay(it) }
 
                     // LIVE pill + timecode only while the live scene shows; both hidden during replay.
                     if (isRecording && displayedUri == null) {
@@ -355,20 +385,43 @@ fun CameraScreen() {
             ActionReplayPanel(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 isRecording = isRecording,
+                countingDown = countdown != null,
                 bufferedSec = effectiveBuffer,
                 rewindBusy = rewindBusy,
                 onPlay = {
-                    // Lock orientation BEFORE beginSession so the muxer's orientationHint and the
-                    // locked preview are taken from one consistent rotation (closes the mid-tap flip race).
-                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
-                    // Reset BOTH buffer clocks so rewind re-earns its threshold from Play. Without
-                    // zeroing bufferedSec here, its stale pre-clear value lingers until onBufferProgress
-                    // fires and could briefly re-enable the rewind buttons (and flash the fill ring full).
-                    bufferedSec = 0f
-                    cameraUptimeSec = 0f      // reset fallback clock so rewind buttons re-earn their threshold
-                    engine.beginSession()
-                    sessionStartMs = System.currentTimeMillis()
-                    isRecording = true
+                    // "3, 2, 1, GO SHOOT!" — recording arms exactly on GO, like a real launch.
+                    if (countdown == null && !isRecording) {
+                        scope.launch {
+                            try {
+                                for (n in listOf("3", "2", "1")) { countdown = n; delay(650) }
+                                countdown = "GO SHOOT!"
+                                // Lock orientation BEFORE beginSession so the muxer's orientationHint and
+                                // the locked preview are taken from one consistent rotation.
+                                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                                // Reset BOTH buffer clocks so rewind re-earns its threshold from launch.
+                                bufferedSec = 0f
+                                cameraUptimeSec = 0f
+                                // beginSession() returns false if the engine stopped during the countdown
+                                // (e.g. app backgrounded). Abort cleanly instead of faking a recording.
+                                if (engine.beginSession()) {
+                                    sessionStartMs = System.currentTimeMillis()
+                                    isRecording = true
+                                    delay(550)    // hold "GO SHOOT!" over the now-live preview, then clear
+                                }
+                            } finally {
+                                // Always clear, even on abort/cancellation/throw, so PLAY can never get
+                                // stuck disabled behind a frozen countdown overlay.
+                                countdown = null
+                                // If the launch aborted (engine stopped during countdown), the orientation
+                                // was already pinned LOCKED but isRecording never flipped, so the
+                                // LaunchedEffect(isRecording) won't restore it. Un-pin here.
+                                if (!isRecording) {
+                                    activity?.requestedOrientation =
+                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                }
+                            }
+                        }
+                    }
                 },
                 onStop = { engine.endSession() },
                 onRewindShort = {
@@ -396,6 +449,7 @@ fun CameraScreen() {
 private fun ActionReplayPanel(
     modifier: Modifier,
     isRecording: Boolean,
+    countingDown: Boolean,
     bufferedSec: Float,
     rewindBusy: Boolean,
     onPlay: () -> Unit,
@@ -412,39 +466,39 @@ private fun ActionReplayPanel(
 
         CircleButton(
             label = "PLAY",
-            contentDescription = "Start recording",
-            enabled = !isRecording,
-            ringColor = Amber,
+            contentDescription = "Start recording with a launch countdown",
+            enabled = !isRecording && !countingDown,
+            ringColor = Cyan,
             onClick = onPlay,
-        ) { drawPlayIcon(it, Amber) }
+        ) { drawPlayIcon(it, Cyan) }
 
         CircleButton(
             label = "STOP",
             contentDescription = "Stop and save recording",
             enabled = isRecording,
-            ringColor = TallyRed,
+            ringColor = StrikeRed,
             onClick = onStop,
-        ) { drawStopIcon(it, TallyRed) }
+        ) { drawStopIcon(it, StrikeRed) }
 
         CircleButton(
-            label = "REWIND\n5 SEC",
-            contentDescription = "Rewind and replay the last 5 seconds",
+            label = "REPLAY\n5 SEC",
+            contentDescription = "Replay the last 5 seconds of the battle",
             enabled = isRecording && !rewindBusy && bufferedSec >= 5f,
             progress = if (isRecording) (bufferedSec / 5f).coerceIn(0f, 1f) else 1f,
             dial = true,
-            ringColor = Amber,
+            ringColor = XBlue,
             onClick = onRewindShort,
-        ) { drawRewindIcon(it, Amber) }
+        ) { drawRewindIcon(it, XBlue) }
 
         CircleButton(
-            label = "REWIND\n10 SEC",
-            contentDescription = "Rewind and replay the last 10 seconds",
+            label = "REPLAY\n10 SEC",
+            contentDescription = "Replay the last 10 seconds of the battle",
             enabled = isRecording && !rewindBusy && bufferedSec >= 10f,
             progress = if (isRecording) (bufferedSec / 10f).coerceIn(0f, 1f) else 1f,
             dial = true,
-            ringColor = Amber,
+            ringColor = XBlue,
             onClick = onRewindLong,
-        ) { drawRewindIcon(it, Amber) }
+        ) { drawRewindIcon(it, XBlue) }
 
         Spacer(Modifier.weight(1f))
         LiveDotFooter()
@@ -467,15 +521,37 @@ private fun RewindOverlay(visible: Boolean, label: String) {
     ) {
         Text(
             text = label,
-            color = Amber,
             style = TextStyle(
+                brush = Brush.linearGradient(listOf(Cyan, XBlue)),
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
+                fontStyle = FontStyle.Italic,   // forward slant = speed
                 fontSize = 96.sp,
                 letterSpacing = 4.sp,
             ),
         )
     }
+}
+
+// ---------------------------------------------------------------------------
+// "3, 2, 1, GO SHOOT!" launch countdown
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun CountdownOverlay(label: String) {
+    val go = label == "GO SHOOT!"
+    Text(
+        text = label,
+        textAlign = TextAlign.Center,
+        style = TextStyle(
+            color = if (go) Volt else Cyan,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Black,
+            fontStyle = FontStyle.Italic,
+            fontSize = if (go) 64.sp else 120.sp,
+            letterSpacing = if (go) 4.sp else 0.sp,
+        ),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -505,40 +581,7 @@ private fun CircleButton(
                 .semantics { this.contentDescription = contentDescription; role = Role.Button },
             contentAlignment = Alignment.Center,
         ) {
-            // Jog/shuttle dial: a notched wheel of ticks around the rim. Ticks "light up"
-            // amber as the rolling buffer accrues toward the rewind threshold; a full ring
-            // of lit ticks reads as a ready-to-spin shuttle wheel.
-            if (dial) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val ticks = 24
-                    val lit = (progress.coerceIn(0f, 1f) * ticks).toInt()
-                    val cx = size.width / 2f
-                    val cy = size.height / 2f
-                    val inset = 3.dp.toPx()
-                    val outerR = size.minDimension / 2f - inset
-                    val innerR = outerR - 5.dp.toPx()
-                    val sw = 1.5.dp.toPx()
-                    for (i in 0 until ticks) {
-                        // start at top (-90°), go clockwise
-                        val ang = (-PI / 2.0) + (2.0 * PI * i / ticks)
-                        val ca = cos(ang).toFloat()
-                        val sa = sin(ang).toFloat()
-                        // Fill stays fully visible even while the button is disabled — the dial
-                        // IS the "buffer accruing toward threshold" feedback; only the button
-                        // chrome (border/bg/icon) dims via `alpha`.
-                        val tickColor =
-                            if (i < lit) Amber
-                            else Steel.copy(alpha = 0.4f)
-                        drawLine(
-                            color = tickColor,
-                            start = androidx.compose.ui.geometry.Offset(cx + innerR * ca, cy + innerR * sa),
-                            end = androidx.compose.ui.geometry.Offset(cx + outerR * ca, cy + outerR * sa),
-                            strokeWidth = sw,
-                            cap = StrokeCap.Round,
-                        )
-                    }
-                }
-            }
+            if (dial) SpinGauge(progress = progress, color = ringColor, enabled = enabled)
             Canvas(modifier = Modifier.size(22.dp).alpha(alpha)) {
                 iconDraw(size.minDimension)
             }
@@ -551,11 +594,66 @@ private fun CircleButton(
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
+                fontStyle = FontStyle.Italic,
                 fontSize = 9.sp,
                 letterSpacing = 1.5.sp,
                 lineHeight = 11.sp,
             ),
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Spin gauge — the signature. RPM ticks around the rim wind up (in `color`) as the
+// rolling buffer accrues toward the replay threshold; the fill stays fully visible even
+// while the button is disabled, since it IS the readiness feedback. Once ready, a cyan
+// spark orbits the rim — the bey is still spinning, ready for an instant replay. Only
+// composed for dial buttons, so PLAY/STOP never run the infinite transition.
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun SpinGauge(progress: Float, color: Color, enabled: Boolean) {
+    val spin = rememberInfiniteTransition(label = "spin")
+    val spinAngle by spin.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(1200, easing = LinearEasing), RepeatMode.Restart),
+        label = "rpm",
+    )
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val ticks = 24
+        val lit = (progress.coerceIn(0f, 1f) * ticks).toInt()
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val inset = 3.dp.toPx()
+        val outerR = size.minDimension / 2f - inset
+        val innerR = outerR - 5.dp.toPx()
+        val sw = 1.5.dp.toPx()
+        for (i in 0 until ticks) {
+            // start at top (-90°), go clockwise
+            val ang = (-PI / 2.0) + (2.0 * PI * i / ticks)
+            val ca = cos(ang).toFloat()
+            val sa = sin(ang).toFloat()
+            val tickColor = if (i < lit) color else Steel.copy(alpha = 0.4f)
+            drawLine(
+                color = tickColor,
+                start = androidx.compose.ui.geometry.Offset(cx + innerR * ca, cy + innerR * sa),
+                end = androidx.compose.ui.geometry.Offset(cx + outerR * ca, cy + outerR * sa),
+                strokeWidth = sw,
+                cap = StrokeCap.Round,
+            )
+        }
+        if (enabled) {
+            drawArc(    // orbiting spark over the rim — reads spinAngle in the draw phase (no recomposition)
+                color = Cyan,
+                startAngle = spinAngle,
+                sweepAngle = 42f,
+                useCenter = false,
+                topLeft = androidx.compose.ui.geometry.Offset(cx - outerR, cy - outerR),
+                size = androidx.compose.ui.geometry.Size(outerR * 2f, outerR * 2f),
+                style = Stroke(width = sw * 1.8f, cap = StrokeCap.Round),
+            )
+        }
     }
 }
 
@@ -624,7 +722,7 @@ private fun LivePill(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(TallyRed)
+            .background(StrikeRed)
             .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -636,11 +734,12 @@ private fun LivePill(modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "REC",
+            text = "BATTLE",
             color = Color.White,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
+                fontStyle = FontStyle.Italic,
                 fontSize = 11.sp,
                 letterSpacing = 1.5.sp,
             ),
@@ -648,23 +747,24 @@ private fun LivePill(modifier: Modifier = Modifier) {
     }
 }
 
-// During-replay broadcast bug — a dark lower-third tag, amber phosphor text.
+// During-replay bug — a dark tag with the X-blue edge and cyan readout.
 @Composable
 private fun RewindPill(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(2.dp))
             .background(Panel)
-            .border(1.dp, AmberDim, RoundedCornerShape(2.dp))
+            .border(1.dp, XBlue, RoundedCornerShape(2.dp))
             .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "◀◀ REPLAY 0.5×",
-            color = Amber,
+            text = "▶ REPLAY 0.5×",
+            color = Cyan,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
+                fontStyle = FontStyle.Italic,
                 fontSize = 11.sp,
                 letterSpacing = 1.5.sp,
             ),
@@ -682,12 +782,12 @@ private fun Timecode(elapsedMs: Long, modifier: Modifier = Modifier) {
     val text = "%02d:%02d:%02d:%02d".format(hours, minutes, seconds, frames)
     Box(
         modifier = modifier
-            .border(1.dp, AmberDim, RoundedCornerShape(2.dp))
+            .border(1.dp, XBlue, RoundedCornerShape(2.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         Text(
             text = text,
-            color = Amber,
+            color = Cyan,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -719,12 +819,12 @@ private fun LiveDotFooter() {
             modifier = Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(TallyRed),
+                .background(StrikeRed),
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = "LIVE",
-            color = TallyRed,
+            color = StrikeRed,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,

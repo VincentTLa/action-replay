@@ -41,17 +41,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// ponytail: mirrors the LSM Deck palette in CameraScreen.kt (those are file-private).
-// If these ever drift, hoist the shared set into one ui/Theme file. 8 constants isn't
-// worth the cross-file coupling yet.
-private val BgTop = Color(0xFF1A1D23)
-private val BgBottom = Color(0xFF0E1013)
-private val Amber = Color(0xFFFFB000)
-private val AmberDim = Color(0xFFB37A00)
-private val TallyRed = Color(0xFFFF3B30)
-private val Steel = Color(0xFF5B6470)
-private val Panel = Color(0xFF1C2026)
-private val Divider = Color(0xFF2A2F38)
+// ponytail: mirrors the Beyblade X palette in CameraScreen.kt (those are file-private).
+// If these ever drift, hoist the shared set into one ui/Theme file. A handful of
+// constants isn't worth the cross-file coupling yet.
+private val BgTop = Color(0xFF0A1018)
+private val BgBottom = Color(0xFF05080F)
+private val XBlue = Color(0xFF0091FF)
+private val Cyan = Color(0xFF29E0FF)
+private val StrikeRed = Color(0xFFFF2D2D)
+private val Steel = Color(0xFF5C6B7E)
+private val Panel = Color(0xFF101A28)
+private val Divider = Color(0xFF1E2C3E)
 
 /**
  * Pre-grant "standby card": the deck is patched but its inputs aren't connected.
@@ -87,7 +87,7 @@ fun PermissionScreen(
             Spacer(Modifier.height(18.dp))
             Text(
                 text = "Camera and mic aren't connected yet",
-                color = Amber,
+                color = Cyan,
                 style = TextStyle(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Black,
@@ -152,12 +152,12 @@ private fun StandbyTally() {
                 .size(9.dp)
                 .alpha(dotAlpha)
                 .clip(CircleShape)
-                .background(TallyRed),
+                .background(StrikeRed),
         )
         Spacer(Modifier.width(8.dp))
         Text(
             text = "STANDBY",
-            color = TallyRed,
+            color = StrikeRed,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -171,13 +171,13 @@ private fun StandbyTally() {
 /** One broadcast input: label, a level-meter strip, and a READY / NO SIGNAL status. */
 @Composable
 private fun SignalChannel(label: String, ready: Boolean) {
-    val accent = if (ready) Amber else TallyRed
+    val accent = if (ready) Cyan else StrikeRed
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(2.dp))
             .background(Panel)
-            .border(1.dp, if (ready) AmberDim else Divider, RoundedCornerShape(2.dp))
+            .border(1.dp, if (ready) XBlue else Divider, RoundedCornerShape(2.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp)
             .semantics(mergeDescendants = true) {
                 contentDescription =
@@ -226,7 +226,7 @@ private fun LevelMeter(lit: Boolean) {
                     .width(3.dp)
                     .height(h.dp)
                     .clip(RoundedCornerShape(1.dp))
-                    .background(if (lit) Amber else Steel.copy(alpha = 0.3f)),
+                    .background(if (lit) Cyan else Steel.copy(alpha = 0.3f)),
             )
         }
     }
@@ -239,7 +239,7 @@ private fun ActionButton(text: String, onClick: () -> Unit) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(3.dp))
             .background(Panel)
-            .border(1.5.dp, Amber, RoundedCornerShape(3.dp))
+            .border(1.5.dp, XBlue, RoundedCornerShape(3.dp))
             .clickable(onClick = onClick)
             .semantics { role = Role.Button }
             .padding(vertical = 14.dp),
@@ -247,7 +247,7 @@ private fun ActionButton(text: String, onClick: () -> Unit) {
     ) {
         Text(
             text = text,
-            color = Amber,
+            color = Cyan,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
