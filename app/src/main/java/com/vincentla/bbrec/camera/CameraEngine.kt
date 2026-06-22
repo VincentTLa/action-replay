@@ -1,4 +1,4 @@
-package com.vincentla.action_replay.camera
+package com.vincentla.bbrec.camera
 
 import android.Manifest
 import android.annotation.SuppressLint

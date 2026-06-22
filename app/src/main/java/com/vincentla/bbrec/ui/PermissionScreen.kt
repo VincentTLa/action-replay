@@ -1,4 +1,4 @@
-package com.vincentla.action_replay.ui
+package com.vincentla.bbrec.ui
 
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -90,7 +90,7 @@ fun PermissionScreen(
 
             Spacer(Modifier.height(10.dp))
             Text(
-                text = "Action Replay records video and sound to your gallery. Nothing leaves your device.",
+                text = "BBRec records video and sound to your gallery. Nothing leaves your device.",
                 color = Steel,
                 style = TextStyle(
                     fontFamily = FontFamily.Monospace,

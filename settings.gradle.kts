@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "action-replay"
+rootProject.name = "BBRec"
 include(":app")
  

@@ -1,4 +1,9 @@
-# Action Replay — Claude working notes
+# BBRec — Claude working notes
+<!-- App is fully named "BBRec": display name (strings.xml app_name), applicationId + namespace
+     (`com.vincentla.bbrec`), Kotlin package (`com.vincentla.bbrec`), theme (`Theme.BBRec`),
+     rootProject.name. The on-disk checkout folder is still `actionreplay/` (cosmetic only — rename
+     the folder + re-import in Android Studio if you want it to match). -->
+
 
 ## Hard constraint: dev/test split
 - **This Mac (`m_vincent@`)**: development only. Network is restricted — assume **no** ability to fetch new artifacts, run Gradle sync against remote repos, install emulator system images, or hit Google Maven. Treat dependency additions and version bumps as costly: prefer what's already resolvable, and call out anything that would require a fresh download.
@@ -17,7 +22,7 @@
 - **Replay 5s / Replay 10s**: snapshot last 5s/10s from the rolling buffer, save as MP4, then **play it back inline in the preview area** (at 0.5× slow-mo; saved file stays normal speed), then return to live camera. (Durations bumped from 3s/5s on 2026-06-22.)
 - Replay buttons are **disabled until the buffer holds ≥5s / ≥10s**, and while a replay is already playing.
 - Audio is captured with video.
-- Output goes to the **shared gallery** via MediaStore under `Movies/ActionReplay/`.
+- Output goes to the **shared gallery** via MediaStore under `Movies/BBRec/`.
 
 ## Visual design — "Beyblade X" (2026-06-22)
 The app is for filming **Beyblade X** battles and replaying the finish; the UI is themed to the franchise. (Earlier passes — a cyan/purple synthwave HUD, then an amber "LSM Deck" broadcast look — are both superseded; don't reintroduce amber/purple.)

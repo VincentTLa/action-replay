@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.vincentla.action_replay"
+    namespace = "com.vincentla.bbrec"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.vincentla.action_replay"
+        applicationId = "com.vincentla.bbrec"
         minSdk = 29
         targetSdk = 35
         versionCode = 1

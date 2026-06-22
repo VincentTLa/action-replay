@@ -1,4 +1,4 @@
-package com.vincentla.action_replay
+package com.vincentla.bbrec
 
 import android.Manifest
 import android.content.Intent
@@ -18,8 +18,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
-import com.vincentla.action_replay.ui.CameraScreen
-import com.vincentla.action_replay.ui.PermissionScreen
+import com.vincentla.bbrec.ui.CameraScreen
+import com.vincentla.bbrec.ui.PermissionScreen
 
 class MainActivity : ComponentActivity() {
 

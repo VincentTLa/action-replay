@@ -1,4 +1,4 @@
-package com.vincentla.action_replay
+package com.vincentla.bbrec
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.vincentla.action_replay", appContext.packageName)
+        assertEquals("com.vincentla.bbrec", appContext.packageName)
     }
 }

@@ -1,4 +1,4 @@
-package com.vincentla.action_replay.ui
+package com.vincentla.bbrec.ui
 
 import android.app.Activity
 import android.content.Context
@@ -84,7 +84,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.rememberCoroutineScope
-import com.vincentla.action_replay.camera.CameraEngine
+import com.vincentla.bbrec.camera.CameraEngine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -466,7 +466,7 @@ fun CameraScreen() {
 
             // ---- Right panel (1/4) --------------------------------------
             val effectiveBuffer = maxOf(bufferedSec, cameraUptimeSec)
-            ActionReplayPanel(
+            ControlPanel(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 isRecording = isRecording,
                 countingDown = countdown != null,
@@ -546,7 +546,7 @@ fun CameraScreen() {
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun ActionReplayPanel(
+private fun ControlPanel(
     modifier: Modifier,
     isRecording: Boolean,
     countingDown: Boolean,

@@ -1,4 +1,4 @@
-package com.vincentla.action_replay
+package com.vincentla.bbrec
 
 import org.junit.Test
 

@@ -1,4 +1,4 @@
-package com.vincentla.action_replay.camera
+package com.vincentla.bbrec.camera
 
 import android.content.ContentValues
 import android.content.Context
@@ -12,7 +12,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Insert an in-app cache file into MediaStore.Movies/ActionReplay, returning the gallery Uri.
+ * Insert an in-app cache file into MediaStore.Movies/BBRec, returning the gallery Uri.
  *
  * ponytail: copy via streams. If the source files get large enough that copy
  * dominates, switch to `openFileDescriptor("rw")` and have the muxer write
@@ -20,7 +20,7 @@ import java.util.Locale
  */
 object ClipSaver {
 
-    private const val SUBDIR = "Movies/ActionReplay"
+    private const val SUBDIR = "Movies/BBRec"
 
     private val nameFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
 

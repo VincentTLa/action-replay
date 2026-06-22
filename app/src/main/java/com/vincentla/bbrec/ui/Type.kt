@@ -1,11 +1,11 @@
-package com.vincentla.action_replay.ui
+package com.vincentla.bbrec.ui
 
 import android.content.Context
 import android.provider.Settings
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import com.vincentla.action_replay.R
+import com.vincentla.bbrec.R
 
 // "Beyblade X" palette — shared by every screen (was duplicated per-file; hoisted here once a
 // third consumer appeared). Electric blue + cyan on ink, strike-red alarm, rare volt accent.
