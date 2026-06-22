@@ -400,7 +400,7 @@ private fun ActionReplayPanel(
 ) {
     Column(
         modifier = modifier.padding(horizontal = 12.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = Alignment.Start,   // hug the preview side; was centered in the 1/4 panel
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Spacer(Modifier.weight(1f))
