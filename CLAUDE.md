@@ -6,7 +6,7 @@
 - Practical implication for Claude: **don't try to build, lint, or run unit tests from here**. Don't propose commands that need network. Ship code that is internally consistent and let the user run it on the other machine; if a Gradle/Kotlin/AGP version mismatch shows up there, fix by editing files, not by chasing it locally.
 
 ## Product spec (locked in 2026-06-19 conversation)
-- Landscape-locked Android app, back camera.
+- Landscape Android app, back camera. **`sensorLandscape` (2026-06-22):** rotates between both landscape orientations (180° flip) following the physical sensor, even with system auto-rotate off. Portrait is never used. Orientation is **locked to the current landscape while recording** (Play→Stop) so a mid-record flip can't produce a half-upside-down clip (MediaMuxer's orientation hint is fixed at file creation). Preview is counter-rotated 180° in reverse-landscape; saved-file `orientationHint` is computed from live display rotation.
 - Layout: left **3/4** width = live preview, right **1/4** = vertical column of 4 square buttons.
 - Buttons (top → bottom): **Play**, **Stop**, **Rewind 3s**, **Rewind 5s**.
 - **Rolling buffer runs continuously from app launch** (≥5s of encoded video+audio held in memory). **Cleared on Play (2026-06-22):** rewind is session-scoped — it only ever pulls footage captured after Play, never pre-Play frames. The rewind buttons therefore re-earn their ≥3s/≥5s threshold from the moment Play is pressed.

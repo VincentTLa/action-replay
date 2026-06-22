@@ -1,9 +1,15 @@
 package com.vincentla.action_replay.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
+import android.hardware.display.DisplayManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
@@ -41,6 +47,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +64,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -92,6 +100,16 @@ private const val TRANSITION_MS = 500          // ease-in/ease-out per leg (dip-
 private const val SETTLE_MS = 120L             // ponytail: fixed settle for VideoView (SurfaceView) to swap under cover; bump if first frame flashes black on slow devices
 private const val REWIND_SPEED = 0.5f          // inline replay speed; saved file stays normal-speed
 
+// LocalContext can be a ContextWrapper; unwrap to the hosting Activity (null-safe).
+private fun Context.findActivity(): Activity? {
+    var c: Context? = this
+    while (c is ContextWrapper) {
+        if (c is Activity) return c
+        c = c.baseContext
+    }
+    return null
+}
+
 // Slow-mo inline replay: mute (slowed audio is noise) and play at REWIND_SPEED.
 // setSpeed on a prepared player also starts it, so no separate start() needed.
 private fun MediaPlayer.playSlow() {
@@ -103,6 +121,28 @@ private fun MediaPlayer.playSlow() {
 fun CameraScreen() {
     val context = LocalContext.current
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val activity = remember(context) { context.findActivity() }
+    val view = LocalView.current
+    // Counter-rotate the preview 180° in reverse-landscape. A 180° landscape↔landscape flip does
+    // NOT change Configuration (same orientation + dp), so keying off LocalConfiguration never
+    // recomposes — listen to actual display-rotation changes instead.
+    var displayRotation by remember { mutableIntStateOf(view.display?.rotation ?: Surface.ROTATION_0) }
+    DisposableEffect(view) {
+        val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayChanged(displayId: Int) {
+                displayRotation = view.display?.rotation ?: Surface.ROTATION_0
+            }
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+        }
+        dm.registerDisplayListener(listener, mainHandler)
+        onDispose { dm.unregisterDisplayListener(listener) }
+    }
+    val previewRotation = when (displayRotation) {
+        Surface.ROTATION_180, Surface.ROTATION_270 -> 180f
+        else -> 0f
+    }
 
     var bufferedSec by remember { mutableStateOf(0f) }
     var cameraUptimeSec by remember { mutableStateOf(0f) }
@@ -143,6 +183,14 @@ fun CameraScreen() {
         delay(SETTLE_MS)                    // let VideoView surface settle / show first frame
         scrimTarget = 0f                    // reveal the new scene
         if (displayedUri == null) rewindBusy = false   // preview over, back to live → re-enable rewind
+    }
+
+    // Lock orientation while recording: MediaMuxer's orientation hint is fixed at file creation,
+    // so a mid-record 180° flip would otherwise produce a half-upside-down clip. Free to flip otherwise.
+    LaunchedEffect(isRecording) {
+        activity?.requestedOrientation =
+            if (isRecording) ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
     }
 
     val engine = remember {
@@ -224,6 +272,7 @@ fun CameraScreen() {
                                 })
                             }
                         },
+                        update = { it.rotation = previewRotation },
                     )
 
                     displayedUri?.let { uri ->
@@ -304,6 +353,9 @@ fun CameraScreen() {
                 bufferedSec = effectiveBuffer,
                 rewindBusy = rewindBusy,
                 onPlay = {
+                    // Lock orientation BEFORE beginSession so the muxer's orientationHint and the
+                    // locked preview are taken from one consistent rotation (closes the mid-tap flip race).
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
                     // Reset BOTH buffer clocks so rewind re-earns its threshold from Play. Without
                     // zeroing bufferedSec here, its stale pre-clear value lingers until onBufferProgress
                     // fires and could briefly re-enable the rewind buttons (and flash the fill ring full).

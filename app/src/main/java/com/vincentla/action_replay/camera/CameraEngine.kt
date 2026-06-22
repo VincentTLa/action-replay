@@ -17,12 +17,14 @@ import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
+import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import java.io.File
 import java.nio.ByteBuffer
@@ -372,11 +374,26 @@ class CameraEngine(
         }, cameraHandler)
     }
 
+    private fun deviceRotationDegrees(): Int {
+        val rotation = if (Build.VERSION.SDK_INT >= 30) {
+            context.display?.rotation
+        } else {
+            @Suppress("DEPRECATION")
+            (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.rotation
+        }
+        return when (rotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+    }
+
     private fun orientationHint(): Int {
-        // Landscape-locked activity + back camera. Sensor is usually 90° on most
-        // devices, giving an upright frame in landscape — hint 0. For an inverted
-        // landscape device, the user can rotate in post.
-        return ((sensorOrientation - 90) + 360) % 360
+        // Back camera. Generalised from the original landscape-locked case (rotation 90 → sensor-90):
+        // rotate the saved file upright for whichever landscape the device was held in at capture.
+        // Orientation is locked while recording, so this rotation stays stable for the whole file.
+        return ((sensorOrientation - deviceRotationDegrees()) + 360) % 360
     }
 
     // ---------------------------------------------------------------------
