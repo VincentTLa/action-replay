@@ -500,7 +500,6 @@ private fun ActionReplayPanel(
         ) { drawRewindIcon(it, XBlue) }
 
         Spacer(Modifier.weight(1f))
-        LiveDotFooter()
     }
 }
 
@@ -804,29 +803,6 @@ private fun FooterLabel(text: String, modifier: Modifier = Modifier) {
             letterSpacing = 2.sp,
         ),
     )
-}
-
-@Composable
-private fun LiveDotFooter() {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(StrikeRed),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = "LIVE",
-            color = StrikeRed,
-            style = TextStyle(
-                fontFamily = BattleFont,
-                fontWeight = FontWeight.Bold,
-                fontSize = 10.sp,
-                letterSpacing = 1.5.sp,
-            ),
-        )
-    }
 }
 
 // ---------------------------------------------------------------------------
