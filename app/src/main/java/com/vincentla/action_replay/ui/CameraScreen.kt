@@ -85,15 +85,16 @@ import kotlin.math.sin
 // Palette
 // ---------------------------------------------------------------------------
 
-private val BgTop = Color(0xFF06061A)
-private val BgBottom = Color(0xFF1B0A2E)
-private val Cyan = Color(0xFF22D3EE)
-private val CyanDim = Color(0xFF0E7490)
-private val Purple = Color(0xFFA855F7)
-private val RedLive = Color(0xFFEF4444)
-private val TextDim = Color(0xFF8A8FA0)
-private val RingFill = Color(0xFF0B1428)
-private val Divider = Color(0xFF1F2A44)
+// "LSM Deck" — broadcast slow-mo replay operator's deck. Gunmetal slate,
+// phosphor-amber readouts, tally-red on-air. No cyan, no purple.
+private val BgTop = Color(0xFF1A1D23)    // gunmetal top
+private val BgBottom = Color(0xFF0E1013) // gunmetal bottom (not pure black)
+private val Amber = Color(0xFFFFB000)    // phosphor readouts, play, dial fill
+private val AmberDim = Color(0xFFB37A00) // dim amber for borders/unlit
+private val TallyRed = Color(0xFFFF3B30) // REC / stop / live tally
+private val Steel = Color(0xFF5B6470)    // quiet labels, dividers, unlit ticks
+private val Panel = Color(0xFF1C2026)    // button/readout fill
+private val Divider = Color(0xFF2A2F38)  // preview border, hairlines
 
 private const val BUFFER_POLL_MS = 100L
 private const val TRANSITION_MS = 500          // ease-in/ease-out per leg (dip-in, dip-out)
@@ -413,35 +414,37 @@ private fun ActionReplayPanel(
             label = "PLAY",
             contentDescription = "Start recording",
             enabled = !isRecording,
-            ringColor = Cyan,
+            ringColor = Amber,
             onClick = onPlay,
-        ) { drawPlayIcon(it, Cyan) }
+        ) { drawPlayIcon(it, Amber) }
 
         CircleButton(
             label = "STOP",
             contentDescription = "Stop and save recording",
             enabled = isRecording,
-            ringColor = RedLive,
+            ringColor = TallyRed,
             onClick = onStop,
-        ) { drawStopIcon(it, RedLive) }
+        ) { drawStopIcon(it, TallyRed) }
 
         CircleButton(
             label = "REWIND\n5 SEC",
             contentDescription = "Rewind and replay the last 5 seconds",
             enabled = isRecording && !rewindBusy && bufferedSec >= 5f,
             progress = if (isRecording) (bufferedSec / 5f).coerceIn(0f, 1f) else 1f,
-            ringColor = Purple,
+            dial = true,
+            ringColor = Amber,
             onClick = onRewindShort,
-        ) { drawRewindIcon(it, Purple) }
+        ) { drawRewindIcon(it, Amber) }
 
         CircleButton(
             label = "REWIND\n10 SEC",
             contentDescription = "Rewind and replay the last 10 seconds",
             enabled = isRecording && !rewindBusy && bufferedSec >= 10f,
             progress = if (isRecording) (bufferedSec / 10f).coerceIn(0f, 1f) else 1f,
-            ringColor = Purple,
+            dial = true,
+            ringColor = Amber,
             onClick = onRewindLong,
-        ) { drawRewindIcon(it, Purple) }
+        ) { drawRewindIcon(it, Amber) }
 
         Spacer(Modifier.weight(1f))
         LiveDotFooter()
@@ -464,8 +467,8 @@ private fun RewindOverlay(visible: Boolean, label: String) {
     ) {
         Text(
             text = label,
+            color = Amber,
             style = TextStyle(
-                brush = Brush.linearGradient(listOf(Cyan, Purple)),
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
                 fontSize = 96.sp,
@@ -486,7 +489,8 @@ private fun CircleButton(
     enabled: Boolean,
     ringColor: Color,
     onClick: () -> Unit,
-    progress: Float = 1f,          // <1f draws a buffer-fill ring (how close rewind is to enabling)
+    progress: Float = 1f,          // for dial buttons: how close rewind is to enabling (0..1)
+    dial: Boolean = false,         // true → draw the jog/shuttle tick ring (the signature)
     iconDraw: (androidx.compose.ui.graphics.drawscope.DrawScope.(Float) -> Unit),
 ) {
     val alpha = if (enabled) 1f else 0.3f
@@ -495,25 +499,44 @@ private fun CircleButton(
             modifier = Modifier
                 .size(56.dp)
                 .clip(CircleShape)
-                .background(RingFill.copy(alpha = alpha))
+                .background(Panel.copy(alpha = alpha))
                 .border(1.5.dp, ringColor.copy(alpha = alpha), CircleShape)
                 .clickable(enabled = enabled, onClick = onClick)
                 .semantics { this.contentDescription = contentDescription; role = Role.Button },
             contentAlignment = Alignment.Center,
         ) {
-            // Buffer-fill ring: shows the rolling buffer accruing toward the rewind threshold.
-            if (progress < 1f) {
+            // Jog/shuttle dial: a notched wheel of ticks around the rim. Ticks "light up"
+            // amber as the rolling buffer accrues toward the rewind threshold; a full ring
+            // of lit ticks reads as a ready-to-spin shuttle wheel.
+            if (dial) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
-                    val sw = 2.dp.toPx()
-                    drawArc(
-                        color = ringColor,
-                        startAngle = -90f,
-                        sweepAngle = 360f * progress,
-                        useCenter = false,
-                        topLeft = androidx.compose.ui.geometry.Offset(sw / 2f, sw / 2f),
-                        size = androidx.compose.ui.geometry.Size(size.width - sw, size.height - sw),
-                        style = Stroke(width = sw, cap = StrokeCap.Round),
-                    )
+                    val ticks = 24
+                    val lit = (progress.coerceIn(0f, 1f) * ticks).toInt()
+                    val cx = size.width / 2f
+                    val cy = size.height / 2f
+                    val inset = 3.dp.toPx()
+                    val outerR = size.minDimension / 2f - inset
+                    val innerR = outerR - 5.dp.toPx()
+                    val sw = 1.5.dp.toPx()
+                    for (i in 0 until ticks) {
+                        // start at top (-90°), go clockwise
+                        val ang = (-PI / 2.0) + (2.0 * PI * i / ticks)
+                        val ca = cos(ang).toFloat()
+                        val sa = sin(ang).toFloat()
+                        // Fill stays fully visible even while the button is disabled — the dial
+                        // IS the "buffer accruing toward threshold" feedback; only the button
+                        // chrome (border/bg/icon) dims via `alpha`.
+                        val tickColor =
+                            if (i < lit) Amber
+                            else Steel.copy(alpha = 0.4f)
+                        drawLine(
+                            color = tickColor,
+                            start = androidx.compose.ui.geometry.Offset(cx + innerR * ca, cy + innerR * sa),
+                            end = androidx.compose.ui.geometry.Offset(cx + outerR * ca, cy + outerR * sa),
+                            strokeWidth = sw,
+                            cap = StrokeCap.Round,
+                        )
+                    }
                 }
             }
             Canvas(modifier = Modifier.size(22.dp).alpha(alpha)) {
@@ -524,7 +547,7 @@ private fun CircleButton(
         Text(
             text = label,
             textAlign = TextAlign.Center,
-            color = TextDim.copy(alpha = if (enabled) 1f else 0.5f),
+            color = Steel.copy(alpha = if (enabled) 1f else 0.5f),
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -601,7 +624,7 @@ private fun LivePill(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(50))
-            .background(RedLive)
+            .background(TallyRed)
             .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -613,7 +636,7 @@ private fun LivePill(modifier: Modifier = Modifier) {
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = "LIVE",
+            text = "REC",
             color = Color.White,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
@@ -625,25 +648,20 @@ private fun LivePill(modifier: Modifier = Modifier) {
     }
 }
 
+// During-replay broadcast bug — a dark lower-third tag, amber phosphor text.
 @Composable
 private fun RewindPill(modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(Purple)
+            .clip(RoundedCornerShape(2.dp))
+            .background(Panel)
+            .border(1.dp, AmberDim, RoundedCornerShape(2.dp))
             .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(Color.White),
-        )
-        Spacer(Modifier.width(6.dp))
         Text(
-            text = "REWIND 0.5x",
-            color = Color.White,
+            text = "◀◀ REPLAY 0.5×",
+            color = Amber,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -664,12 +682,12 @@ private fun Timecode(elapsedMs: Long, modifier: Modifier = Modifier) {
     val text = "%02d:%02d:%02d:%02d".format(hours, minutes, seconds, frames)
     Box(
         modifier = modifier
-            .border(1.dp, CyanDim, RoundedCornerShape(2.dp))
+            .border(1.dp, AmberDim, RoundedCornerShape(2.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         Text(
             text = text,
-            color = Cyan,
+            color = Amber,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -685,7 +703,7 @@ private fun FooterLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         modifier = modifier,
-        color = TextDim,
+        color = Steel,
         style = TextStyle(
             fontFamily = FontFamily.Monospace,
             fontSize = 10.sp,
@@ -701,12 +719,12 @@ private fun LiveDotFooter() {
             modifier = Modifier
                 .size(6.dp)
                 .clip(CircleShape)
-                .background(RedLive),
+                .background(TallyRed),
         )
         Spacer(Modifier.width(6.dp))
         Text(
             text = "LIVE",
-            color = RedLive,
+            color = TallyRed,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -727,6 +745,7 @@ private fun backgroundBrush(): Brush =
 private fun Modifier.scanlines(): Modifier = this.drawBehind {
     val spacing = 3.dp.toPx()
     val color = Color.White.copy(alpha = 0.03f)
+    val dash = PathEffect.dashPathEffect(floatArrayOf(2f, 2f), 0f)  // hoisted: was reallocated per line per frame
     var y = 0f
     while (y < size.height) {
         drawLine(
@@ -734,7 +753,7 @@ private fun Modifier.scanlines(): Modifier = this.drawBehind {
             start = androidx.compose.ui.geometry.Offset(0f, y),
             end = androidx.compose.ui.geometry.Offset(size.width, y),
             strokeWidth = 1f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f, 2f), 0f),
+            pathEffect = dash,
         )
         y += spacing
     }
