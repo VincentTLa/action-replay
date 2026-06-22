@@ -54,8 +54,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -268,11 +273,9 @@ fun CameraScreen() {
 
                     RewindOverlay(visible = rewindVisible, label = rewindLabel)
 
-                    if (isRecording) {
-                        // Hide LIVE while a rewind clip is on screen — REWIND takes its slot.
-                        if (displayedUri == null) {
-                            LivePill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
-                        }
+                    // LIVE pill + timecode only while the live scene shows; both hidden during replay.
+                    if (isRecording && displayedUri == null) {
+                        LivePill(modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
                         Timecode(
                             elapsedMs = (nowMs - sessionStartMs).coerceAtLeast(0),
                             modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
@@ -321,9 +324,6 @@ fun CameraScreen() {
                 },
             )
         }
-
-        // Floating help glyph (decorative).
-        HelpGlyph(modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp))
     }
 }
 
@@ -351,6 +351,7 @@ private fun ActionReplayPanel(
 
         CircleButton(
             label = "PLAY",
+            contentDescription = "Start recording",
             enabled = !isRecording,
             ringColor = Cyan,
             onClick = onPlay,
@@ -358,6 +359,7 @@ private fun ActionReplayPanel(
 
         CircleButton(
             label = "STOP",
+            contentDescription = "Stop and save recording",
             enabled = isRecording,
             ringColor = RedLive,
             onClick = onStop,
@@ -365,14 +367,18 @@ private fun ActionReplayPanel(
 
         CircleButton(
             label = "REWIND\n3 SEC",
+            contentDescription = "Rewind and replay the last 3 seconds",
             enabled = isRecording && !rewindBusy && bufferedSec >= 3f,
+            progress = if (isRecording) (bufferedSec / 3f).coerceIn(0f, 1f) else 1f,
             ringColor = Purple,
             onClick = onRewind3,
         ) { drawRewindIcon(it, Purple) }
 
         CircleButton(
             label = "REWIND\n5 SEC",
+            contentDescription = "Rewind and replay the last 5 seconds",
             enabled = isRecording && !rewindBusy && bufferedSec >= 5f,
+            progress = if (isRecording) (bufferedSec / 5f).coerceIn(0f, 1f) else 1f,
             ringColor = Purple,
             onClick = onRewind5,
         ) { drawRewindIcon(it, Purple) }
@@ -416,9 +422,11 @@ private fun RewindOverlay(visible: Boolean, label: String) {
 @Composable
 private fun CircleButton(
     label: String,
+    contentDescription: String,
     enabled: Boolean,
     ringColor: Color,
     onClick: () -> Unit,
+    progress: Float = 1f,          // <1f draws a buffer-fill ring (how close rewind is to enabling)
     iconDraw: (androidx.compose.ui.graphics.drawscope.DrawScope.(Float) -> Unit),
 ) {
     val alpha = if (enabled) 1f else 0.3f
@@ -429,9 +437,25 @@ private fun CircleButton(
                 .clip(CircleShape)
                 .background(RingFill.copy(alpha = alpha))
                 .border(1.5.dp, ringColor.copy(alpha = alpha), CircleShape)
-                .clickable(enabled = enabled, onClick = onClick),
+                .clickable(enabled = enabled, onClick = onClick)
+                .semantics { this.contentDescription = contentDescription; role = Role.Button },
             contentAlignment = Alignment.Center,
         ) {
+            // Buffer-fill ring: shows the rolling buffer accruing toward the rewind threshold.
+            if (progress < 1f) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val sw = 2.dp.toPx()
+                    drawArc(
+                        color = ringColor,
+                        startAngle = -90f,
+                        sweepAngle = 360f * progress,
+                        useCenter = false,
+                        topLeft = androidx.compose.ui.geometry.Offset(sw / 2f, sw / 2f),
+                        size = androidx.compose.ui.geometry.Size(size.width - sw, size.height - sw),
+                        style = Stroke(width = sw, cap = StrokeCap.Round),
+                    )
+                }
+            }
             Canvas(modifier = Modifier.size(22.dp).alpha(alpha)) {
                 iconDraw(size.minDimension)
             }
@@ -628,27 +652,6 @@ private fun LiveDotFooter() {
                 fontWeight = FontWeight.Bold,
                 fontSize = 10.sp,
                 letterSpacing = 1.5.sp,
-            ),
-        )
-    }
-}
-
-@Composable
-private fun HelpGlyph(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .size(22.dp)
-            .clip(CircleShape)
-            .border(1.dp, TextDim, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "?",
-            color = TextDim,
-            style = TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = 12.sp,
             ),
         )
     }
