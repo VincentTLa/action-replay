@@ -5,10 +5,10 @@
      the folder + re-import in Android Studio if you want it to match). -->
 
 
-## Hard constraint: dev/test split
-- **This Mac (`m_vincent@`)**: development only. Network is restricted — assume **no** ability to fetch new artifacts, run Gradle sync against remote repos, install emulator system images, or hit Google Maven. Treat dependency additions and version bumps as costly: prefer what's already resolvable, and call out anything that would require a fresh download.
-- **User's personal computer**: where `./gradlew assembleDebug`, `installDebug`, and emulator runs happen. All real verification lives there.
-- Practical implication for Claude: **don't try to build, lint, or run unit tests from here**. Don't propose commands that need network. Ship code that is internally consistent and let the user run it on the other machine; if a Gradle/Kotlin/AGP version mismatch shows up there, fix by editing files, not by chasing it locally.
+## Build & verify
+- Single machine now (no dev/test split). Network is available: Gradle sync, fetching artifacts, emulator images, and Google Maven all work.
+- Claude may build, lint, sync, and run the emulator directly: `./gradlew assembleDebug`, `installDebug`, etc. Fix Gradle/Kotlin/AGP mismatches in-place.
+- Still pause and ask before adding a **new** third-party dependency — keep the dep list lean (see "What Claude should remember").
 
 ## Product spec (locked in 2026-06-19 conversation)
 - Landscape Android app, back camera. **`sensorLandscape` (2026-06-22):** rotates between both landscape orientations (180° flip) following the physical sensor, even with system auto-rotate off. Portrait is never used. Orientation is **locked to the current landscape while recording** (Play→Stop) so a mid-record flip can't produce a half-upside-down clip (MediaMuxer's orientation hint is fixed at file creation). Preview is counter-rotated 180° in reverse-landscape; saved-file `orientationHint` is computed from live display rotation.
@@ -27,7 +27,7 @@
 ## Visual design — "Beyblade X" (2026-06-22)
 The app is for filming **Beyblade X** battles and replaying the finish; the UI is themed to the franchise. (Earlier passes — a cyan/purple synthwave HUD, then an amber "LSM Deck" broadcast look — are both superseded; don't reintroduce amber/purple.)
 - **Palette** — shared `internal val`s in `ui/Type.kt` (hoisted there once a third screen needed them; previously duplicated per-file): ink `BgTop #0A1018`/`BgBottom #05080F`, `XBlue #0091FF`, `Cyan #29E0FF`, `StrikeRed #FF2D2D`, `Volt #FFE600`, `Steel #5C6B7E`, `Panel #101A28`, `Divider #1E2C3E`. Cyan-on-ink is grounded in the brand here, **not** a synthwave default. All screens reference these names directly (same package).
-- **Type**: VT323 (pixel/terminal, SIL OFL) via `ui/Type.kt` → `BattleFont`. **Requires `app/src/main/res/font/vt323.ttf`** — can't be fetched from the dev Mac (no network), and the build fails on `R.font.vt323` until the file is present on the build machine. Used for all HUD/display text; running prose (permission-screen body copy) stays `Monospace` for readability. VT323 has **no italic** — styles using `BattleFont` must not set `fontStyle = Italic` (faux-skewed pixel type looks bad). Keep `BattleFont` text **ASCII-safe** (e.g. `> REPLAY 0.5x`, not `▶ … ×`) so a missing glyph doesn't silently fall back to a system font.
+- **Type**: VT323 (pixel/terminal, SIL OFL) via `ui/Type.kt` → `BattleFont`. **Requires `app/src/main/res/font/vt323.ttf`** — the build fails on `R.font.vt323` until the file is present; if it's missing, drop the .ttf in. Used for all HUD/display text; running prose (permission-screen body copy) stays `Monospace` for readability. VT323 has **no italic** — styles using `BattleFont` must not set `fontStyle = Italic` (faux-skewed pixel type looks bad). Keep `BattleFont` text **ASCII-safe** (e.g. `> REPLAY 0.5x`, not `▶ … ×`) so a missing glyph doesn't silently fall back to a system font.
 - **Signature — spin gauges**: the Replay buttons render an RPM tick ring that winds up as the buffer fills toward threshold; once ready, a cyan spark orbits the rim (a top still spinning). `SpinGauge` composable, only composed for `dial` buttons (so the record toggle never runs the infinite transition).
 - **GO SHOOT! countdown** on LAUNCH (`CountdownOverlay`) and an **X-slash wipe** (blue X grows from centre) that replaces dip-to-black on replay entry — the blue fill still fully covers the SurfaceView swap at peak, so the cover guarantee is preserved.
 - Recording tally reads **● BATTLE**; the during-playback bug reads **`> REPLAY 0.5x`** for a rewind or **`> REWATCH`** for a reel rewatch (normal speed).
@@ -38,7 +38,7 @@ The app is for filming **Beyblade X** battles and replaying the finish; the UI i
 - Kotlin + Jetpack Compose UI.
 - **Camera2 + MediaCodec** (not CameraX) — CameraX Recorder doesn't expose encoded frames for a rolling buffer.
 - minSdk 29 (Android 10), targetSdk current.
-- Auto-rewind inline replay uses `android.widget.VideoView` (no dep). Reel **rewatch** uses **Media3 ExoPlayer** (`media3-exoplayer`, version in `libs.versions.toml`) — a deliberate dependency added for frame-accurate scrubbing; **requires a Gradle sync (download) on the build machine**, and the build fails until it resolves (bump the `media3` version if 1.4.1 isn't available there).
+- Auto-rewind inline replay uses `android.widget.VideoView` (no dep). Reel **rewatch** uses **Media3 ExoPlayer** (`media3-exoplayer`, version in `libs.versions.toml`) — a deliberate dependency added for frame-accurate scrubbing (bump the `media3` version if 1.4.1 isn't available).
 
 ## Architecture
 - `camera/CameraEngine.kt` — owns Camera2 session, video MediaCodec (input surface), audio MediaCodec, and a `SampleRingBuffer` of encoded samples keyed by PTS. Also owns the live-session `MediaMuxer` when Play is active.
@@ -91,10 +91,9 @@ Use the Agent tool with `subagent_type: "coder" | "reviewer" | "tester"`. Each p
 
 ## What Claude should remember
 - The app's subject is **Beyblade X** (filming battles, replaying the finish) — keep the UI themed to it; see Visual design.
-- The UI depends on a bundled font at `app/src/main/res/font/vt323.ttf`. It is **not in the dev Mac's tree** (no network to fetch it) and the build fails on `R.font.vt323` without it — if a build error points there, the user just needs to drop the .ttf in on the build machine, it's not a code bug.
-- Pause and ask before adding any new third-party dependency — every new artifact costs the user a trip to the other machine.
+- The UI depends on a bundled font at `app/src/main/res/font/vt323.ttf` and the build fails on `R.font.vt323` without it — if a build error points there, just drop the .ttf in, it's not a code bug.
+- Pause and ask before adding any new third-party dependency — keep the dep list lean.
 - When in doubt about a Gradle/AGP/Kotlin version, leave the existing version alone unless it's blocking.
-- All "verify on device" steps land on the user, not on Claude.
 - **AGP 9.x bundles the Kotlin Android plugin.** Do NOT apply `org.jetbrains.kotlin.android` — it double-registers the `kotlin` extension and Gradle sync fails with "extension is already registered with that name". Only `kotlin-compose` (the Compose compiler plugin) is applied separately. The Kotlin *version* still lives in `libs.versions.toml` because `kotlin-compose` references it.
 - **AGP 9.x removed `kotlinOptions`.** Use the new DSL outside the `android { }` block:
   ```kotlin
